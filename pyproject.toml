@@ -22,6 +22,7 @@ classifiers = [
 # diagnostic plot imports matplotlib where it is drawn.
 dependencies = [
     "numpy>=1.24",
+    "regorator>=0.2",
     "pandas>=2.0.0",
     "scipy>=1.10.0",
     "xarray>=2023.1.0",
@@ -29,3 +30,9 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 include = ["fluxmethods*"]
+
+# The sensor table is data the estimators read at run time, not documentation:
+# without it `sensor_geometry` is empty and the analytic corrections that ask it
+# for a path length raise. A wheel has to carry it.
+[tool.setuptools.package-data]
+"fluxmethods.spectral" = ["instruments/*.json", "instruments/*.md"]

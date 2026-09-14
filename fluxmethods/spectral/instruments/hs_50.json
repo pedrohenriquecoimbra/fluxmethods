@@ -1,0 +1,11 @@
+{
+  "model": "hs_50",
+  "aliases": [],
+  "kind": "sonic_anemometer",
+  "manufacturer": "Gill Instruments",
+  "vpath_length": 0.125,
+  "hpath_length": 0.110,
+  "tau": 0.02,
+  "source": "EddyPro 7.0.9, src/src_rp/retrieve_sensor_params.f90",
+  "note": "tau is the 1/50 s the model's 50 Hz name refers to; the vertical path sets the line averaging of w and the sonic temperature."
+}

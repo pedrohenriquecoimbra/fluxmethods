@@ -1,0 +1,11 @@
+{
+  "model": "li7200rs",
+  "aliases": [],
+  "kind": "gas_analyser",
+  "manufacturer": "LI-COR Biosciences",
+  "vpath_length": 0.127,
+  "hpath_length": 0.0127,
+  "tau": 0.1,
+  "source": "EddyPro 7.0.9, src/src_rp/retrieve_sensor_params.f90",
+  "note": "same optics as the li7200; kept as its own model because EddyPro's table lists it separately."
+}
