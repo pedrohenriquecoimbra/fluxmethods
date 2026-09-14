@@ -33,12 +33,18 @@ Resampling                no single reference: nearest-neighbour, linear
                           interpolation, block averaging and an FFT resampling,
                           as the acquisition software of a site happens to need.
 
-Known defect inherited with the code
-------------------------------------
+Known defect, inherited from GEddySoft and kept on purpose
+----------------------------------------------------------
 `signal.nanlinfit` deletes NaNs and fits against `arange` of what remains, so the
-fit runs on a compacted axis while `nandetrend` subtracts at the original
-indices. A straight line with an interior gap does not detrend to zero. It is
-kept as it stands because these files are verbatim copies and the equivalence
-claim is that they are the same code; the fix belongs in the reference
-implementation. `tests/test_signal_and_detrending.py` pins the behaviour and says
-so, and is what should start failing when it is fixed.
+fit runs on a compacted axis while `nandetrend` evaluates it at the original
+indices. A straight line with an interior gap does not detrend to zero.
+
+GEddySoft v4.1 does the same thing, in the same two steps (`nanlinfit.py`,
+`nandetrend.py`); `oneflux_preproc` transcribes it, and that transcription is a
+bridged twin held equal to GEddySoft's own code to twelve digits. So this is a
+faithful port of upstream's arithmetic, not a bug introduced in any of the three
+— and correcting it here would manufacture a divergence rather than fix one.
+The fix belongs in GEddySoft's patch bundle.
+
+`tests/test_signal_and_detrending.py` pins the behaviour and names its origin. It
+is what should start failing when an upstream fix reaches this port.

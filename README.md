@@ -92,19 +92,25 @@ period's mean and leaves the samples in place; in `resampling` it is the mean of
 the samples falling in each target interval. Neither is exported at the top
 level — reach for them through their module.
 
-## A known defect, kept deliberately
+## A known defect, inherited and kept on purpose
 
 `signal.nanlinfit` fits on a *compacted* axis — it deletes the NaNs and fits
-against `arange` of what is left — while `nandetrend` subtracts that trend at the
+against `arange` of what is left — while `nandetrend` evaluates that trend at the
 original indices. So an exact straight line with one interior gap does not
 detrend to zero, and the residual grows along the series. Since despiking puts
 gaps in before detrending runs, this is not a rare input.
 
-It is **not fixed here**. These files are verbatim copies and the whole claim is
-that they are the same code as the reference implementation; correcting one side
-would break that. The fix belongs upstream, and
-`tests/test_signal_and_detrending.py` pins the current behaviour, names it a
-defect, and is what should start failing when it lands.
+**It is not this project's bug, and not the reference implementation's either.**
+GEddySoft v4.1 compacts and evaluates exactly the same way, in the same two files;
+`oneflux_preproc` transcribes that faithfully, and the transcription is a bridged
+twin held equal to GEddySoft's own code to twelve digits. Correcting it in any of
+the three would not fix a defect — it would manufacture a divergence and turn
+that comparison red.
+
+So the fix belongs in GEddySoft's patch bundle, among the patches that change
+what the release computes. `tests/test_signal_and_detrending.py` pins the
+behaviour, says whose it is, and is what should start failing when an upstream
+fix reaches this port.
 
 ## What is deliberately not here
 

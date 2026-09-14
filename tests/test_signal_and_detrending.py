@@ -19,20 +19,25 @@ class TestSignal(unittest.TestCase):
         out = signal.nandetrend(np.array([1.0, 3.0, 5.0, 7.0]))
         np.testing.assert_allclose(out, 0.0, atol=1e-12)
 
-    def test_a_gap_closes_up_the_time_axis_KNOWN_DEFECT(self):
-        """Pinned as it stands, and it is wrong.
+    def test_a_gap_closes_up_the_time_axis_as_upstream_does(self):
+        """Pinned as it stands. The numbers are wrong, and they are wrong the
+        same way GEddySoft's own are, which is why they stay.
 
-        ``nanlinfit`` deletes the NaNs and fits against ``arange`` of what is
-        left, so the fit runs on a *compacted* axis; ``nandetrend`` then
-        subtracts that trend at the original indices. An exact straight line
-        with one interior gap therefore does not detrend to zero, and the
-        residual grows along the series.
+        `nanlinfit` deletes the NaNs and fits against `arange` of what is left,
+        so the fit runs on a *compacted* axis; `nandetrend` then evaluates that
+        trend at the original indices. A straight line with an interior gap does
+        not detrend to zero, and the residual grows along the series.
 
-        Not corrected here: this file is a verbatim copy of the reference
-        implementation's ``core/signal.py`` and the equivalence claim is that
-        the two are the same code. The fix belongs there -- fit against the
-        surviving *positions* rather than their count -- and this test is what
-        should start failing when it lands.
+        This is a faithful port, not a bug introduced here. GEddySoft v4.1
+        (`nanlinfit.py`, `nandetrend.py`) compacts and evaluates exactly the
+        same way, `oneflux_preproc`'s `core/signal.py` transcribes it, and that
+        transcription is a bridged twin required equal to upstream to twelve
+        digits. Correcting it in any of the three would not fix a defect -- it
+        would manufacture a divergence and turn the comparison red.
+
+        The fix, if it is made, belongs in GEddySoft's patch bundle, among the
+        patches that change what the release computes. What should make this
+        test fail is such a fix reaching the port -- not a local edit.
         """
         line_with_a_hole = np.array([1.0, 3.0, np.nan, 7.0, 9.0])
         slope, _ = signal.nanlinfit(line_with_a_hole)
