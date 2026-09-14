@@ -11,6 +11,7 @@ computed values. What is pinned here is that the chain is complete: that these
 run, on quantified data, and give back a finite flux in the right units.
 """
 
+import pathlib
 import unittest
 
 import numpy as np
@@ -99,7 +100,7 @@ class TestWebbRuns(unittest.TestCase):
         self.assertTrue(np.isfinite(got))
 
 
-class TestTheUnitsLayerIsNotSeized(unittest.TestCase):
+class TestTheUnitsLayerIsAdoptedNotSeized(unittest.TestCase):
     def test_the_registry_is_the_application_s_own(self):
         """A library must not install a global unit registry: the caller's own
         quantities belong to theirs, and pint refuses to mix two."""
@@ -107,6 +108,37 @@ class TestTheUnitsLayerIsNotSeized(unittest.TestCase):
 
         from fluxmethods.core import units
         self.assertIs(units.ureg, pint.get_application_registry())
+
+    def test_scalar_magnitudes_are_array_like_as_the_copied_code_expects(self):
+        """The registry is adopted but modified, and this is the modification
+        that matters. On a default registry a scalar quantity's magnitude is a
+        float; the files here are verbatim copies of code written against a
+        registry with ``force_ndarray_like`` set, where it is a 0-d ndarray.
+
+        Pinned because it is invisible to every other check we have: the source
+        is byte-identical either way, and only the registry's semantics differ.
+        """
+        import numpy as np
+
+        from fluxmethods.core import units
+        self.assertTrue(units.ureg.force_ndarray_like)
+        self.assertIsInstance(units.ureg.Quantity(3.0, "m").magnitude, np.ndarray)
+
+    def test_importing_us_does_not_replace_the_host_s_registry(self):
+        """Adopted, not replaced: the object the host had is the object we use,
+        so quantities it made before importing us keep working with ours."""
+        import subprocess
+        import sys
+
+        probe = (
+            "import pint; app = pint.get_application_registry(); q = app('1 m');"
+            "import fluxmethods.core.units as u;"
+            "print(int(u.ureg is app), (q + u.ureg('2 m')).magnitude)")
+        out = subprocess.run([sys.executable, "-c", probe], capture_output=True,
+                             text=True,
+                             cwd=str(pathlib.Path(__file__).parent.parent))
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.split()[0], "1")
 
 
 if __name__ == "__main__":

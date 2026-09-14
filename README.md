@@ -79,13 +79,28 @@ here, in `core/constants.py`.
 
 Every file is a verbatim copy except these, and each one is deliberate:
 
-1. **`core/units.py` takes the application's unit registry** instead of building
+1. **`core/units.py` adopts the application's unit registry** instead of building
    one and calling `pint.set_application_registry`. That is right for a program,
    which owns its process, and wrong for a library: importing fluxmethods would
    otherwise repoint the global registry of whatever imported it, and pint refuses
-   to operate across two registries. The definitions these methods rely on are
-   added to whatever registry is in use, if it lacks them. **This is the only
-   behavioural difference; the rest are imports.**
+   to operate across two registries — so every quantity the program had already
+   made would be orphaned by the import.
+
+   **Adopted is not untouched.** Two global changes are made to a registry this
+   package does not own, and both are necessary:
+
+   * the unit definitions these methods rely on (`ppm`, `ppt`, `µmol`, `celsius`,
+     `ppbv`) are added if the registry lacks them — a name it already knows is
+     left alone;
+   * `force_ndarray_like` is **set**. On a default registry a scalar quantity's
+     magnitude is a `float`; with the flag it is a 0-d ndarray. These files are
+     verbatim copies of code written against a registry that sets it, so without
+     it identical source would compute different types. That is the one
+     behavioural difference a diff of the two trees can never show, which is why
+     it is set explicitly here and pinned by a test rather than left to
+     `pint_xarray.setup_registry`, which happens to set it too.
+
+   **This is the only behavioural difference; the rest below are imports.**
 2. `despiking/vickers_et_al_1997` imports matplotlib where the one diagnostic
    plot is drawn, not at the top.
 3. `spectral/eddypro` imports pint and `convert_unit` inside the single branch

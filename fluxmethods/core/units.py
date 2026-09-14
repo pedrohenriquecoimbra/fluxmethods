@@ -1,18 +1,29 @@
 """Units, on the registry the application already uses.
 
-**The one place this collection deliberately behaves differently from the code it
+**Where this collection deliberately behaves differently from the code it
 copies.** ``oneflux_preproc/core/units.py`` builds its own registry and calls
 ``pint.set_application_registry`` on it. That is right for a *program*: it owns
-the process. It is wrong for a *library* -- importing fluxmethods would silently
-repoint the global registry of whatever program imported it, and pint refuses to
-operate across two registries, so quantities the caller made before the import
-would stop working with the ones they made after.
+the process. It is wrong for a *library* -- importing fluxmethods would otherwise
+repoint the global registry of whatever imported it, and pint refuses to operate
+across two registries, so every quantity the program had already made would be
+orphaned the moment it imported us.
 
-So the registry here is whichever one the application already uses, and the
-definitions these methods rely on are added to it only if it does not have them.
-For a caller who has set none, ``get_application_registry`` returns pint's default
-and this behaves as the reference implementation does. Everything below this block
-is that module, unchanged.
+So the registry here is whichever one the application already uses. **It is
+adopted, not replaced -- but it is modified, in two ways, and both are global
+effects on an object this package does not own:**
+
+1. The unit definitions the methods rely on (``ppm``, ``ppt``, ``µmol``,
+   ``celsius``, ``ppbv``) are added if the registry lacks them. A name it already
+   knows is left alone: the application's spelling wins over ours.
+2. ``force_ndarray_like`` is set. This is **not** cosmetic and not optional: on a
+   default registry a scalar quantity's magnitude is a ``float``, and with the
+   flag it is a 0-d ndarray. The files in this package are verbatim copies of
+   code written against a registry that sets it, so without it identical source
+   would compute different types -- the one behavioural difference that a diff of
+   the two trees could never show. ``pint_xarray.setup_registry`` happens to set
+   it too; it is set explicitly here so the semantics do not rest on that.
+
+Everything below this block is that module, unchanged.
 """
 
 import pint
@@ -20,6 +31,10 @@ from pint.errors import UndefinedUnitError
 import xarray as xr
 
 ureg = pint.get_application_registry()
+
+# See (2) above: the copied code's semantics depend on this, so it is declared
+# rather than inherited from whatever else has touched the registry.
+ureg.force_ndarray_like = True
 
 #: ``name, definition`` for the units these methods rely on. A name the registry
 #: already knows is left alone: the application's own spelling wins over ours.
