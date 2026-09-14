@@ -32,7 +32,7 @@ interval. They belong to different steps, so reach for them through their step.
 """
 
 from . import (axis_rotation, despiking, detrending, resampling, signal,
-               spectral, time_lag)
+               spectral, time_lag, units)
 from .axis_rotation.wilczak_et_al_2001 import (double_rotation, planarfit,
                                                triple_rotation)
 from .despiking.mauder_et_al_2013 import mauder2013
@@ -40,24 +40,30 @@ from .despiking.vickers_et_al_1997 import spike_detection_vickers97
 from .detrending.commonly_used import linear_detrend
 from .resampling.commonly_used import fft_resample, linear, nearest
 from .signal import nandetrend, nanlinfit, xcov
+from .spectral.analytic import (analytic_tube, block_average_highpass,
+                               sonic_response)
+from .spectral.eddypro import (bpcf_anemometric_fluxes, bpcf_moncrieff_97,
+                               bpcf_momentum)
 from .spectral.lpfc import lpfc_lut
 from .spectral.sensor_table import sensor_geometry
 from .time_lag.fixed import fix_time_lag
 from .time_lag.maximisation import time_lag, time_lag_w_default
 from .time_lag.prescribed import prescribed_time_lag
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     # the steps, which are the contract
     "axis_rotation", "despiking", "detrending", "resampling", "signal",
-    "spectral", "time_lag",
+    "spectral", "time_lag", "units",
     # and the methods, by step
     "double_rotation", "triple_rotation", "planarfit",
     "mauder2013", "spike_detection_vickers97",
     "linear_detrend",                       # see the note above on block_average
     "nearest", "linear", "fft_resample",
     "time_lag", "time_lag_w_default", "fix_time_lag", "prescribed_time_lag",
+    "block_average_highpass", "sonic_response", "analytic_tube",
+    "bpcf_moncrieff_97", "bpcf_anemometric_fluxes", "bpcf_momentum",
     "lpfc_lut", "sensor_geometry",
     "nandetrend", "nanlinfit", "xcov",
 ]

@@ -29,6 +29,11 @@ Linear detrending         Rannik & Vesala (1999)
 Time-lag maximisation     covariance maximisation, as in EddyPro's CovMax;
                           cf. Fan et al. (1990), Aubinet et al. (2012)
 Low-pass look-up (LPFC)   a wind-speed/stability table, as GEddySoft applies it
+Block-average high-pass   Moncrieff et al. (2004); Rannik & Vesala (1999)
+Sonic path/response loss  Kaimal et al. (1972) cospectrum
+Closed-path low-pass      Moore (1986); Foken et al. (2012)
+Band-pass (EddyPro)       Moncrieff et al. (1997, 2004), transcribed from the
+                          eddypro-engine source
 Resampling                no single reference: nearest-neighbour, linear
                           interpolation, block averaging and an FFT resampling,
                           as the acquisition software of a site happens to need.

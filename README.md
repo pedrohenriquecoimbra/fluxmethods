@@ -48,9 +48,12 @@ tested implementation of a single step to call from inside it.
 | `time_lag` | `maximisation` | `time_lag`, `time_lag_w_default`, `lag_series`, `xcov_kernel` |
 | `time_lag` | `fixed` / `prescribed` | `fix_time_lag`, `prescribed_time_lag` and its table loaders |
 | `time_lag` | `commons` | `acq_freq`, `seconds_to_shift`, `shift_to_seconds` |
+| `spectral` | `analytic` | `block_average_highpass`, `sonic_response`, `analytic_tube` |
+| `spectral` | `eddypro` | `bpcf_moncrieff_97`, `bpcf_anemometric_fluxes`, `bpcf_momentum` |
 | `spectral` | `lpfc` | `lpfc_lut`, `lookup_lpfc_cf`, `load_lpfc_lut_table` |
 | `spectral` | `sensor_table` | `sensor_geometry`, `load_sensor_geometry`, `stamp_manifest` |
 | — | `signal` | `xcov`, `nanlinfit`, `nandetrend` — shared across steps |
+| — | `units` | `convert_unit` — the one conversion the estimators need |
 
 **The layout is the equivalence map.** One package per processing step, the same
 tree as `oneflux_preproc/corrections/`, path for path and filename for filename —
@@ -62,23 +65,24 @@ copies `oneflux_preproc/core/signal.py`, which is shared across steps.)
 
 ## What is NOT here yet
 
-Thirteen registered methods that are not GEddySoft's have no copy here, in two
-groups:
+Of the 34 registered correction methods in the reference implementation, nine are
+GEddySoft's own and bridge to GEddySoft rather than living here. Of the other 25,
+**18 are here and 7 are not** — and the seven are not an accident of effort, they
+are the ones that need a layer this collection exists to do without:
 
-* **Not separable.** Seven spectral methods (`highpass_block_average`, the three
-  `lowpass_analytic_*`, `lowpass_insitu_fit`, `lowpass_insitu_ibrom_2007`,
-  `lowpass_insitu_cutoff`) and `constants` are registered *inside* their facade
-  module, so there is no estimator file to copy. Lifting them means refactoring
-  the reference implementation first.
-* **Entangled with the units layer.** `webb_et_al_1980` (WPL),
-  `molardensity_to_drymixingratio` (Ibrom) and the three
-  `bandpass_moncrieff_1997_*` import `core.constants`, `core.measure_type`,
-  `core.units` and `core.micrometeorology`. Copying them means bringing pint and
-  the package's unit conventions along, which is the layer this collection exists
-  to do without.
-
-
-Full references are in [`NOTICE`](NOTICE).
+* **They fit a transfer function to measured spectra** (4):
+  `lowpass_analytic_horst_1997`, `lowpass_insitu_ibrom_2007`, `lowpass_insitu_fit`
+  and `lowpass_insitu_cutoff`. All four carry `requires_spectra=True`, and the
+  fitting machinery they need — a registry of models, ensemble averaging over a
+  window, variable-name resolution — is policy about how a site's data is
+  organised rather than a method. They live in the reference implementation's
+  `spectral/measured.py`.
+* **They re-express quantities in other units** (2): `webb_et_al_1980` (WPL) and
+  `molardensity_to_drymixingratio` (Ibrom), which reach into `core.constants`,
+  `core.measure_type`, `core.units` and `core.micrometeorology`. They are grouped
+  together upstream in `corrections/units/` for exactly that reason.
+* **It is not an estimator at all** (1): `constants` is a step that swaps the
+  values every other method reads.
 
 ## Two conventions worth knowing before you call one
 
