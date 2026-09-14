@@ -1,0 +1,29 @@
+fluxmethods — eddy-covariance methods, published as functions
+Copyright (c) 2026 Pedro Henrique Herig Coimbra
+Licensed under the EUPL-1.2 (see LICENCE).
+
+Where this code comes from
+--------------------------
+These modules are the estimators of `oneflux_preproc`
+(https://github.com/pedrohenriquecoimbra/ONEFlux-preproc), by the same author,
+also under the EUPL-1.2, lifted out of it unchanged. They are not a
+reimplementation and not a rewrite: the file here and the file there are the
+same code, and `oneflux_preproc` checks that claim on every release by running
+the two against each other and requiring them equal to twelve digits.
+
+That is the difference from `miniflux`, which is the same author's *minimal
+reimplementation* of the same physics. miniflux answers "what is the smallest
+thing that is still a flux program"; fluxmethods answers "give me the method,
+not the program". Where fluxmethods and oneflux_preproc disagree numerically,
+one of them has drifted and the equivalence test says so.
+
+Methods implemented here, and the work they come from
+-----------------------------------------------------
+Despiking, MAD            Mauder et al. (2013), Agric. For. Meteorol. 169, 122-135
+Despiking, VM97           Vickers & Mahrt (1997), J. Atmos. Ocean. Technol. 14, 512-526
+Double/triple rotation    Wilczak et al. (2001), Boundary-Layer Meteorol. 99, 127-150
+                          after Tanner & Thurtell (1969)
+Planar fit                Wilczak et al. (2001), same work, § 3
+Resampling                no single reference: nearest-neighbour, linear
+                          interpolation, block averaging and an FFT resampling,
+                          as the acquisition software of a site happens to need.
