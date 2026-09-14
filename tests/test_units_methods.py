@@ -124,6 +124,45 @@ class TestTheUnitsLayerIsAdoptedNotSeized(unittest.TestCase):
         self.assertTrue(units.ureg.force_ndarray_like)
         self.assertIsInstance(units.ureg.Quantity(3.0, "m").magnitude, np.ndarray)
 
+    def test_every_unit_means_what_the_reference_implementation_means(self):
+        """The vocabulary, pinned by meaning rather than by presence.
+
+        ``ppt`` is why this test exists. pint resolves it through its prefix
+        parser as *pico-pint* — a volume, 4.7e-16 m**3 — where these methods mean
+        parts per thousand. A guard that asked "does the registry already know
+        this name?" got `True` and skipped the definition, and the VOC path then
+        computed in pico-pints: thirteen orders of magnitude and a dimension out,
+        silently, wherever nothing forced a conversion.
+
+        So this asserts the meanings, and it has a wrong value to regress to.
+        """
+        from fluxmethods.core import units
+
+        for name, expected in (("ppm", "1e-6 dimensionless"),
+                               ("ppt", "1e-3 dimensionless"),
+                               ("micromol", "1e-6 mole"),
+                               ("ppbv", "1 dimensionless")):
+            have = units.ureg(name).to_base_units()
+            want = units.ureg(expected).to_base_units()
+            self.assertEqual(have.dimensionality, want.dimensionality, name)
+            self.assertAlmostEqual(float(have.magnitude), float(want.magnitude),
+                                   places=18, msg=name)
+
+    def test_ppt_is_parts_per_thousand_and_not_a_volume(self):
+        """Stated on its own, because the failure was dimensional: anything that
+        read a magnitude without converting would not have raised."""
+        from fluxmethods.core import units
+
+        self.assertEqual(units.ureg("ppt").dimensionality,
+                         units.ureg("dimensionless").dimensionality)
+
+    def test_celsius_is_the_offset_unit_not_a_scale_factor(self):
+        from fluxmethods.core import units
+
+        self.assertAlmostEqual(
+            float(units.ureg.Quantity(1.0, "degC").to("K").magnitude),
+            274.15, places=9)
+
     def test_importing_us_does_not_replace_the_host_s_registry(self):
         """Adopted, not replaced: the object the host had is the object we use,
         so quantities it made before importing us keep working with ours."""

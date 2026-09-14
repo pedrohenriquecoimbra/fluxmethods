@@ -26,9 +26,13 @@ effects on an object this package does not own:**
 Everything below this block is that module, unchanged.
 """
 
+import logging
+
 import pint
 from pint.errors import UndefinedUnitError
 import xarray as xr
+
+logger = logging.getLogger(__name__)
 
 ureg = pint.get_application_registry()
 
@@ -36,24 +40,72 @@ ureg = pint.get_application_registry()
 # rather than inherited from whatever else has touched the registry.
 ureg.force_ndarray_like = True
 
-#: ``name, definition`` for the units these methods rely on. A name the registry
-#: already knows is left alone: the application's own spelling wins over ours.
+#: ``name, definition, meaning`` for the units these methods rely on.
+#:
+#: ``meaning`` is what the name has to resolve to for the copied code to compute
+#: what it computed in the reference implementation. It is checked rather than
+#: assumed, because **resolvability is not definedness**: pint resolves a great
+#: many strings through its prefix parser, so a name can look "already known"
+#: while meaning something else entirely. ``ppt`` is the case that matters --
+#: pint reads it as *pico-pint*, a volume, where these methods mean parts per
+#: thousand. That is thirteen orders of magnitude and a dimension, on the unit
+#: the VOC path is written in.
 _DEFINITIONS = (
-    ('ppm', 'ppm = 1e-6 = parts_per_million'),
-    ('ppt', 'ppt = 1e-3 = parts_per_thousand'),
-    ('micromol', 'µmol = 1e-6 mole = micromol'),
-    ('celsius', 'celsius = kelvin; offset: 273.15 = celsius'),
-    ('ppbv', 'ppbv = 1 = parts_per_million_by_volume'),
+    ('ppm', 'ppm = 1e-6 = parts_per_million', '1e-6 dimensionless'),
+    ('ppt', 'ppt = 1e-3 = parts_per_thousand', '1e-3 dimensionless'),
+    ('micromol', 'µmol = 1e-6 mole = micromol', '1e-6 mole'),
+    ('ppbv', 'ppbv = 1 = parts_per_million_by_volume', '1 dimensionless'),
 )
 
-for _name, _definition in _DEFINITIONS:
+#: ``celsius`` is declared by the reference implementation as an offset unit
+#: (``kelvin; offset: 273.15``), which is what pint's own ``degree_Celsius``
+#: already means. It is not checked by resolution the way the others are --
+#: offset units cannot be built from a bare name -- and it is not redefined,
+#: because redefining an offset unit on a shared registry is a good way to break
+#: a host's temperatures for no gain.
+_OFFSET = 'celsius = kelvin; offset: 273.15 = celsius'
+
+
+def _means(name, expected):
+    """Whether ``name`` already resolves to ``expected`` on this registry."""
     try:
-        getattr(ureg, _name)
+        have, want = ureg(name).to_base_units(), ureg(expected).to_base_units()
     except Exception:
-        try:
-            ureg.define(_definition)
-        except Exception:                     # pragma: no cover - registry said no
-            pass
+        return False
+    return (have.dimensionality == want.dimensionality
+            and float(have.magnitude) == float(want.magnitude))
+
+
+for _name, _definition, _meaning in _DEFINITIONS:
+    if _means(_name, _meaning):
+        continue                                  # the registry already agrees
+    try:
+        _had = str(ureg(_name).to_base_units())
+    except Exception:
+        _had = None
+    try:
+        ureg.define(_definition)
+    except Exception:                             # pragma: no cover - registry said no
+        logger.error("could not define %r as %s on the application registry; "
+                     "methods that use it will not compute what they should",
+                     _name, _meaning)
+        continue
+    if _had is not None:
+        # Loud on purpose: we have just changed what a name means on a registry
+        # this package does not own, and the host may be using it.
+        logger.warning(
+            "redefined %r on the application registry: it resolved to %s, and "
+            "the methods here need %s. pint reads 'ppt' as pico-pint, which is "
+            "why this is checked by meaning rather than by whether the name "
+            "resolves.", _name, _had, _meaning)
+
+try:
+    ureg(_OFFSET.split('=')[0].strip())
+except Exception:
+    try:
+        ureg.define(_OFFSET)
+    except Exception:                             # pragma: no cover
+        pass
 
 try:                                          # the .pint accessor, where available
     import pint_xarray

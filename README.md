@@ -89,9 +89,14 @@ Every file is a verbatim copy except these, and each one is deliberate:
    **Adopted is not untouched.** Two global changes are made to a registry this
    package does not own, and both are necessary:
 
-   * the unit definitions these methods rely on (`ppm`, `ppt`, `µmol`, `celsius`,
-     `ppbv`) are added if the registry lacks them — a name it already knows is
-     left alone;
+   * the unit definitions these methods rely on (`ppm`, `ppt`, `µmol`, `ppbv`)
+     are checked **by meaning** and defined where the registry disagrees, with a
+     warning naming what changed. Not by whether the name resolves: pint resolves
+     a great many strings through its prefix parser, and `ppt` is read as
+     *pico-pint*, a volume — where these methods mean parts per thousand. A guard
+     that asked "is this name already known?" got `True` and skipped it, and the
+     VOC path then computed in pico-pints, thirteen orders of magnitude and a
+     dimension out, silently. Every meaning is pinned by a test;
    * `force_ndarray_like` is **set**. On a default registry a scalar quantity's
      magnitude is a `float`; with the flag it is a 0-d ndarray. These files are
      verbatim copies of code written against a registry that sets it, so without
