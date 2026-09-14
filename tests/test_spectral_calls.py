@@ -18,11 +18,16 @@ TUBE = {"li7200": {"tube_length": "71.1", "tube_diameter": "5.3",
                    "tube_flowrate": "12.0"}}
 
 #: EddyPro's band-pass needs more of the instrument declared than the built-in
-#: analytic corrections do -- an optical path length and a response time on each
-#: sensor -- and says so and skips when it is missing, rather than guessing.
-#: Plausible values, deliberately: the code bounds-checks what is declared and
-#: falls back with a warning when a path length or a response time could not be
-#: real, so implausible ones would test the fallback rather than the method.
+#: analytic corrections do: an optical path length and a response time on each
+#: sensor, and a model name.
+#:
+#: The values here are plausible ones, deliberately. `_sonic_geometry` accepts a
+#: declared path only while 0.01 < it < 0.5 m; outside that it falls back to the
+#: *bundled specification* for the declared model and says so, and it skips only
+#: when the model is unknown as well. So an implausible declaration does not
+#: skip -- it quietly computes from the published specification instead of from
+#: the geometry the fixture appears to set up, which is a fixture that looks like
+#: it is testing one thing and tests another.
 INSTRUMENTS = {
     "sonic": {"model": "hs_50_1", "vpath_length": "0.125", "tau": "0.02"},
     "irga": {"model": "li7200_1", "tube_length": "71.1", "tube_diameter": "5.3",
@@ -108,9 +113,16 @@ class TestEddyProBandPassRuns(unittest.TestCase):
         self.assertIn("scf_eddypro_moncrieff_1997", ds.data_vars)
         self.assertIs(out, ds)
 
-    def test_an_undeclared_instrument_is_skipped_rather_than_guessed(self):
-        """EddyPro's path needs an optical path length and a response time. With
-        neither declared it says so and adds nothing, instead of inventing one."""
+    def test_an_unknown_instrument_is_skipped_rather_than_guessed(self):
+        """Two fallbacks, and only the second one skips.
+
+        A declared path length outside 0.01-0.5 m falls back to the bundled
+        specification for the declared model -- so the correction still runs, on
+        published geometry rather than on what was declared. It gives up only when
+        the model is unknown too, which is what ``_averaged`` sets up: its tube
+        block is keyed by model name rather than by sensor role, so no sonic or
+        analyser model is declared at all and there is nothing to fall back to.
+        """
         out = eddypro.bpcf_moncrieff_97(_averaged())
         self.assertEqual([v for v in out.data_vars if v.startswith("scf")], [])
 
