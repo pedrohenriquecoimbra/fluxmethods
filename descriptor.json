@@ -25,12 +25,18 @@
     "source": {
       "env": "FLUXMETHODS_SRC",
       "default": "third_party/fluxmethods/fluxmethods",
-      "layout": "flat",
+      "layout": "tree",
       "clone": [
         "git submodule update --init third_party/fluxmethods",
         "or, outside a checkout of this repository: git clone https://github.com/pedrohenriquecoimbra/fluxmethods.git, then set FLUXMETHODS_SRC to its fluxmethods/ directory"
       ]
-    }
+    },
+    "_comment": [
+      "layout `tree`: fluxmethods is a package, so its parent goes on sys.path and",
+      "its modules are reached as `fluxmethods.<step>.<module>`. A `flat` layout",
+      "would import them under bare names, and `signal` would shadow the standard",
+      "library module of that name for the duration of the call."
+    ]
   },
   "methods": {
     "correction:resampling": [
@@ -39,9 +45,9 @@
         "description": "linear interpolation of each variable onto the target timestamps",
         "references": [],
         "ours": "linear",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:linear",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as fluxmethods.resampling.commonly_used:linear",
         "run": {
-          "callable": "resampling:linear",
+          "callable": "fluxmethods.resampling.commonly_used:linear",
           "shape": "array",
           "args": [
             "arg:values",
@@ -59,9 +65,9 @@
         "description": "mean of the samples falling in each target interval, on edges at the midpoints between target points",
         "references": [],
         "ours": "blockmean_interval",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:block_average",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as fluxmethods.resampling.commonly_used:block_average",
         "run": {
-          "callable": "resampling:block_average",
+          "callable": "fluxmethods.resampling.commonly_used:block_average",
           "shape": "array",
           "args": [
             "arg:values",

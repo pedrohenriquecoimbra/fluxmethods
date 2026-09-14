@@ -38,20 +38,45 @@ tested implementation of a single step to call from inside it.
 
 ## What is here
 
-| module | methods |
-|---|---|
-| `wilczak_et_al_2001` | `double_rotation`, `triple_rotation`, `planarfit` |
-| `mauder_et_al_2013` | `mauder2013` — MAD despiking, per averaging period |
-| `vickers_et_al_1997` | `spike_detection_vickers97`, `linear_interpolate_spikes` |
-| `resampling` | `nearest`, `linear`, `fft_resample`, `block_average` |
-| `detrending` | `block_average`, `linear_detrend` |
-| `signal` | `xcov`, `nanlinfit`, `nandetrend` — the shared numerics |
-| `time_lag.commons` | `acq_freq`, `seconds_to_shift`, `shift_to_seconds` |
-| `time_lag.maximisation` | `time_lag`, `time_lag_w_default`, `lag_series`, `xcov_kernel` |
-| `time_lag.fixed` | `fix_time_lag` |
-| `time_lag.prescribed` | `prescribed_time_lag` and the three table loaders |
-| `spectral.lpfc` | `lpfc_lut`, `lookup_lpfc_cf`, `load_lpfc_lut_table` |
-| `spectral.sensor_table` | `sensor_geometry`, `load_sensor_geometry`, `stamp_manifest` |
+| step | module | methods |
+|---|---|---|
+| `axis_rotation` | `wilczak_et_al_2001` | `double_rotation`, `triple_rotation`, `planarfit` |
+| `despiking` | `mauder_et_al_2013` | `mauder2013` — MAD, per averaging period |
+| `despiking` | `vickers_et_al_1997` | `spike_detection_vickers97`, `linear_interpolate_spikes` |
+| `detrending` | `commonly_used` | `block_average`, `linear_detrend` |
+| `resampling` | `commonly_used` | `nearest`, `linear`, `fft_resample`, `block_average` |
+| `time_lag` | `maximisation` | `time_lag`, `time_lag_w_default`, `lag_series`, `xcov_kernel` |
+| `time_lag` | `fixed` / `prescribed` | `fix_time_lag`, `prescribed_time_lag` and its table loaders |
+| `time_lag` | `commons` | `acq_freq`, `seconds_to_shift`, `shift_to_seconds` |
+| `spectral` | `lpfc` | `lpfc_lut`, `lookup_lpfc_cf`, `load_lpfc_lut_table` |
+| `spectral` | `sensor_table` | `sensor_geometry`, `load_sensor_geometry`, `stamp_manifest` |
+| — | `signal` | `xcov`, `nanlinfit`, `nandetrend` — shared across steps |
+
+**The layout is the equivalence map.** One package per processing step, the same
+tree as `oneflux_preproc/corrections/`, path for path and filename for filename —
+so `diff -r` the two and every difference should be one you can name. Today there
+are exactly two, both intentional: a lazily imported plotting stack in
+`despiking/vickers_et_al_1997`, and one rebound import in
+`detrending/commonly_used`. (`signal` is the one file from outside that tree; it
+copies `oneflux_preproc/core/signal.py`, which is shared across steps.)
+
+## What is NOT here yet
+
+Thirteen registered methods that are not GEddySoft's have no copy here, in two
+groups:
+
+* **Not separable.** Seven spectral methods (`highpass_block_average`, the three
+  `lowpass_analytic_*`, `lowpass_insitu_fit`, `lowpass_insitu_ibrom_2007`,
+  `lowpass_insitu_cutoff`) and `constants` are registered *inside* their facade
+  module, so there is no estimator file to copy. Lifting them means refactoring
+  the reference implementation first.
+* **Entangled with the units layer.** `webb_et_al_1980` (WPL),
+  `molardensity_to_drymixingratio` (Ibrom) and the three
+  `bandpass_moncrieff_1997_*` import `core.constants`, `core.measure_type`,
+  `core.units` and `core.micrometeorology`. Copying them means bringing pint and
+  the package's unit conventions along, which is the layer this collection exists
+  to do without.
+
 
 Full references are in [`NOTICE`](NOTICE).
 

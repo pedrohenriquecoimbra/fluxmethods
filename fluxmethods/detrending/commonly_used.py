@@ -1,7 +1,7 @@
 import numpy as np
 import xarray as xr
 
-from .signal import nandetrend
+from ..signal import nandetrend
 
 
 def block_average(x, **kwargs):
