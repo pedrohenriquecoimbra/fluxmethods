@@ -93,9 +93,21 @@ Every file is a verbatim copy except these, and each one is deliberate:
 4. `spectral/commons` is a **subset**: the seven helpers the estimators here call.
    The other thirteen bin, ensemble-average, transform or draw spectra; four of
    those need a unit registry and one needs matplotlib, and none is a method.
-5. `spectral/fitting_models` drops an import of `ureg` the module never used.
-6. `detrending/commonly_used` and the `units/` pair have their imports rebound to
-   the siblings here.
+5. `core/utils` is a **subset** too: `resolve_variable` alone, of seven. The rest
+   is config parsing and path handling — a program's business, not a method's.
+6. `spectral/fitting_models` drops an import of `ureg` the module never used.
+7. `detrending/commonly_used`, `spectral/eddypro` and the `units/` pair have their
+   imports rebound to the siblings here.
+
+To check the claim yourself, against a checkout of the reference implementation:
+
+```
+diff -r --strip-trailing-cr <ref>/src/oneflux_preproc/corrections fluxmethods
+```
+
+`--strip-trailing-cr` matters on Windows: git normalises line endings per repo, so
+without it every line of every file reads as changed and the real differences are
+invisible in the noise.
 
 ## Two conventions worth knowing before you call one
 
