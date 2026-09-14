@@ -1,0 +1,78 @@
+{
+  "schema": "engine-manifest/1",
+  "engine": {
+    "name": "fluxmethods",
+    "label": "fluxmethods"
+  },
+  "_comment": [
+    "A collection, not a program: fluxmethods publishes the estimators of this",
+    "package as plain functions, with no pipeline, no configuration and nothing",
+    "to invoke. So there is no `runtime` and no dialect here -- there is no",
+    "config of its own to read and no binary to run -- and the rows below carry",
+    "no `selector`, because a collection has no settings to select a method by.",
+    "",
+    "What the `collection` kind changes is what a twin MEANS (core/bridge.py,",
+    "and docs/meta/flux_library_protocol.md): the method now lives there, so the",
+    "twin supersedes the transcription rather than standing beside it as a",
+    "comparison -- and only where the checkout is actually present, since",
+    "registration needs none. The source is not a dependency: without it these",
+    "register, report unavailable, and every transcription goes on running here."
+  ],
+  "library": {
+    "schema": "flux-library/1",
+    "kind": "collection",
+    "source": {
+      "env": "FLUXMETHODS_SRC",
+      "default": "third_party/fluxmethods/fluxmethods",
+      "layout": "flat",
+      "clone": [
+        "git submodule update --init third_party/fluxmethods",
+        "or, outside a checkout of this repository: git clone https://github.com/pedrohenriquecoimbra/fluxmethods.git, then set FLUXMETHODS_SRC to its fluxmethods/ directory"
+      ]
+    }
+  },
+  "methods": {
+    "correction:resampling": [
+      {
+        "name": "linear",
+        "description": "linear interpolation of each variable onto the target timestamps",
+        "references": [],
+        "ours": "linear",
+        "run": {
+          "callable": "resampling:linear",
+          "shape": "array",
+          "args": [
+            "arg:values",
+            "arg:times",
+            "arg:target"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        },
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:linear"
+      },
+      {
+        "name": "block_average",
+        "description": "mean of the samples falling in each target interval, on edges at the midpoints between target points",
+        "references": [],
+        "ours": "blockmean_interval",
+        "run": {
+          "callable": "resampling:block_average",
+          "shape": "array",
+          "args": [
+            "arg:values",
+            "arg:times",
+            "arg:target"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        },
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:block_average"
+      }
+    ]
+  }
+}
