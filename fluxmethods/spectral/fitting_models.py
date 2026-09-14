@@ -1,6 +1,6 @@
 import numpy as np
 import xarray as xr
-from ..utils import resolve_variable
+from ..core.utils import resolve_variable
 from regorator import create_registry, register
 
 

@@ -21,7 +21,7 @@ from scipy.optimize import curve_fit
 from . import commons
 from .commons import correction_factor_from_transfer_function
 from .fitting_models import lorentzian, transfer_function_generator
-from ..utils import resolve_variable
+from ..core.utils import resolve_variable
 
 logger = logging.getLogger(__name__)
 

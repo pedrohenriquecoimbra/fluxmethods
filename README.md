@@ -45,44 +45,57 @@ tested implementation of a single step to call from inside it.
 | `despiking` | `vickers_et_al_1997` | `spike_detection_vickers97`, `linear_interpolate_spikes` |
 | `detrending` | `commonly_used` | `block_average`, `linear_detrend` |
 | `resampling` | `commonly_used` | `nearest`, `linear`, `fft_resample`, `block_average` |
-| `time_lag` | `maximisation` | `time_lag`, `time_lag_w_default`, `lag_series`, `xcov_kernel` |
-| `time_lag` | `fixed` / `prescribed` | `fix_time_lag`, `prescribed_time_lag` and its table loaders |
+| `time_lag` | `maximisation` | `time_lag`, `time_lag_w_default` |
+| `time_lag` | `fixed` / `prescribed` | `fix_time_lag`, `prescribed_time_lag` |
 | `time_lag` | `commons` | `acq_freq`, `seconds_to_shift`, `shift_to_seconds` |
 | `spectral` | `analytic` | `block_average_highpass`, `sonic_response`, `analytic_tube` |
 | `spectral` | `eddypro` | `bpcf_moncrieff_97`, `bpcf_anemometric_fluxes`, `bpcf_momentum` |
-| `spectral` | `lpfc` | `lpfc_lut`, `lookup_lpfc_cf`, `load_lpfc_lut_table` |
-| `spectral` | `sensor_table` | `sensor_geometry`, `load_sensor_geometry`, `stamp_manifest` |
-| — | `signal` | `xcov`, `nanlinfit`, `nandetrend` — shared across steps |
-| — | `units` | `convert_unit` — the one conversion the estimators need |
+| `spectral` | `measured` | `ibrom_et_al_2007`, `generic_experimental`, `fully_analytical`, `cutoff_lut` |
+| `spectral` | `lpfc` / `sensor_table` | `lpfc_lut`, `sensor_geometry` |
+| `units` | `webb_et_al_1980` | the WPL density correction |
+| `units` | `ibrom_et_al_2007` | molar density → dry mixing ratio |
+| `core` | — | units, constants, measure types, moist-air thermodynamics, the run record, `signal`, `utils` |
 
-**The layout is the equivalence map.** One package per processing step, the same
-tree as `oneflux_preproc/corrections/`, path for path and filename for filename —
-so `diff -r` the two and every difference should be one you can name. Today there
-are exactly two, both intentional: a lazily imported plotting stack in
-`despiking/vickers_et_al_1997`, and one rebound import in
-`detrending/commonly_used`. (`signal` is the one file from outside that tree; it
-copies `oneflux_preproc/core/signal.py`, which is shared across steps.)
+Full references are in [`NOTICE`](NOTICE).
 
-## What is NOT here yet
+**The layout is the equivalence map.** One package per processing step, plus
+`core`, the same tree as `oneflux_preproc`'s `corrections/<step>/` and `core/` —
+path for path and filename for filename. `diff -r` the two and every difference
+should be one you can name. They are all named below.
+
+## Coverage
 
 Of the 34 registered correction methods in the reference implementation, nine are
-GEddySoft's own and bridge to GEddySoft rather than living here. Of the other 25,
-**18 are here and 7 are not** — and the seven are not an accident of effort, they
-are the ones that need a layer this collection exists to do without:
+GEddySoft's own and bridge to GEddySoft rather than living here. **All but one of
+the other 25 are here.**
 
-* **They fit a transfer function to measured spectra** (4):
-  `lowpass_analytic_horst_1997`, `lowpass_insitu_ibrom_2007`, `lowpass_insitu_fit`
-  and `lowpass_insitu_cutoff`. All four carry `requires_spectra=True`, and the
-  fitting machinery they need — a registry of models, ensemble averaging over a
-  window, variable-name resolution — is policy about how a site's data is
-  organised rather than a method. They live in the reference implementation's
-  `spectral/measured.py`.
-* **They re-express quantities in other units** (2): `webb_et_al_1980` (WPL) and
-  `molardensity_to_drymixingratio` (Ibrom), which reach into `core.constants`,
-  `core.measure_type`, `core.units` and `core.micrometeorology`. They are grouped
-  together upstream in `corrections/units/` for exactly that reason.
-* **It is not an estimator at all** (1): `constants` is a step that swaps the
-  values every other method reads.
+The exception is `constants`, and it is not an estimator: it calls
+`library_globals.reset()`, returns `{}`, and exists to undo a `constants@<engine>`
+swap performed by that package's library bridge. There are no engines here to
+swap from, so there is nothing for it to restore. The constants themselves *are*
+here, in `core/constants.py`.
+
+## The differences from the code this copies
+
+Every file is a verbatim copy except these, and each one is deliberate:
+
+1. **`core/units.py` takes the application's unit registry** instead of building
+   one and calling `pint.set_application_registry`. That is right for a program,
+   which owns its process, and wrong for a library: importing fluxmethods would
+   otherwise repoint the global registry of whatever imported it, and pint refuses
+   to operate across two registries. The definitions these methods rely on are
+   added to whatever registry is in use, if it lacks them. **This is the only
+   behavioural difference; the rest are imports.**
+2. `despiking/vickers_et_al_1997` imports matplotlib where the one diagnostic
+   plot is drawn, not at the top.
+3. `spectral/eddypro` imports pint and `convert_unit` inside the single branch
+   that can meet a pint quantity, so a band-pass factor costs no unit registry.
+4. `spectral/commons` is a **subset**: the seven helpers the estimators here call.
+   The other thirteen bin, ensemble-average, transform or draw spectra; four of
+   those need a unit registry and one needs matplotlib, and none is a method.
+5. `spectral/fitting_models` drops an import of `ureg` the module never used.
+6. `detrending/commonly_used` and the `units/` pair have their imports rebound to
+   the siblings here.
 
 ## Two conventions worth knowing before you call one
 
@@ -141,23 +154,18 @@ what the release computes. `tests/test_signal_and_detrending.py` pins the
 behaviour, says whose it is, and is what should start failing when an upstream
 fix reaches this port.
 
-## What is deliberately not here
-
-The methods of `oneflux_preproc` that are *facade* rather than estimator — the
-ones whose work is reading a sensor table, grouping a period, resolving units,
-writing variable attributes — stay there. So do the ones entangled with its
-units and measure-type layer, which cannot be lifted without bringing the layer
-along: the WPL density correction, the Ibrom RH-dependent conversion, and the
-spectral correction chain. Splitting those is a separate job, not a copy.
-
 ## Install
 
 ```
 pip install .
 ```
 
-Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`. No plotting stack: the one
-diagnostic plot imports `matplotlib` where it is drawn.
+Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`, `regorator`.
+
+`pip install .[units]` adds `pint` for the two methods in `fluxmethods.units`.
+That package is reached lazily, so `import fluxmethods` costs no unit registry
+and the other twenty-two methods do not need one. No plotting stack either: the
+one diagnostic plot imports `matplotlib` where it is drawn.
 
 ## Tests
 

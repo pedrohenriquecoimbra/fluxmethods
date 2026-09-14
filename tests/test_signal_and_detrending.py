@@ -6,7 +6,8 @@ import numpy as np
 import xarray as xr
 
 import fluxmethods
-from fluxmethods import detrending, resampling, signal
+from fluxmethods import detrending, resampling
+from fluxmethods.core import signal
 
 
 class TestSignal(unittest.TestCase):

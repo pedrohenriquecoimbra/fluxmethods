@@ -28,6 +28,13 @@ dependencies = [
     "xarray>=2023.1.0",
 ]
 
+[project.optional-dependencies]
+# Only `fluxmethods.units` needs a unit registry -- the WPL density correction
+# and the Ibrom conversion, two methods of twenty-four. It is reached lazily, so
+# `import fluxmethods` costs nothing without these and raises a plain ImportError
+# with them missing only if you ask for that package.
+units = ["pint>=0.20", "pint-xarray>=0.3"]
+
 [tool.setuptools.packages.find]
 include = ["fluxmethods*"]
 

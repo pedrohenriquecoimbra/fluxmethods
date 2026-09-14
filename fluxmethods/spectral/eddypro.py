@@ -51,8 +51,6 @@ import logging
 import numpy as np
 import xarray as xr
 
-from ..units import convert_unit
-
 logger = logging.getLogger(__name__)
 
 # ``nseconds`` and ``nfreq`` are hard-coded in EddyPro too -- they define an
@@ -246,9 +244,13 @@ def _kelvin(ds, name, size):
         return None
     da = ds[name]
     if hasattr(getattr(da, 'data', None), 'units'):        # a pint quantity
-        # Imported here rather than at the top: pint is a dependency of the data,
-        # not of this module, and this is the only branch that can meet one.
+        # Imported here rather than at the top: pint is a dependency of the
+        # data, not of this module, and this is the only branch that can meet
+        # one. Keeping both out of the module header is what lets a caller who
+        # only wants a band-pass factor import this without a unit registry.
         from pint import DimensionalityError
+
+        from ..core.units import convert_unit
 
         try:
             da = convert_unit(da, 'K')

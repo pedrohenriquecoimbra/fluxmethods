@@ -182,10 +182,98 @@
     ],
     "correction:spectral": [
       {
+        "name": "block_average_highpass",
+        "description": "recovers the low-frequency flux lost to block averaging",
+        "references": [],
+        "ours": "highpass_block_average",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "sonic_response",
+        "description": "sonic path-averaging and dynamic-response loss from a model cospectrum",
+        "references": [],
+        "ours": "lowpass_analytic_sonic",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "analytic_tube",
+        "description": "closed-path tube, IRGA path averaging and intake separation",
+        "references": [],
+        "ours": "lowpass_analytic_closedpath",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "fully_analytical",
+        "description": "first-order sensor response combined with sonic path averaging",
+        "references": [],
+        "ours": "lowpass_analytic_horst_1997",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "ibrom_et_al_2007",
+        "description": "Lorentzian fitted to the measured gas/sonic power-spectral ratio",
+        "references": [],
+        "ours": "lowpass_insitu_ibrom_2007",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "generic_experimental",
+        "description": "fits an arbitrary transfer-function model to a measured spectral ratio",
+        "references": [],
+        "ours": "lowpass_insitu_fit",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "cutoff_lut",
+        "description": "cut-off frequency fitted per stability class to the measured cospectra",
+        "references": [],
+        "ours": "lowpass_insitu_cutoff",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
         "name": "lpfc_lut",
-        "description": "low-pass correction factor from a wind-speed/stability look-up table",
+        "description": "low-pass factor from a wind-speed/stability look-up table",
         "references": [],
         "ours": "lowpass_lut_wind_stability",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "bpcf_moncrieff_97",
+        "description": "EddyPro's analytic band-pass correction for closed-path gas fluxes",
+        "references": [],
+        "ours": "bandpass_moncrieff_1997_gas",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "bpcf_anemometric_fluxes",
+        "description": "EddyPro's analytic band-pass correction for the sonic heat flux",
+        "references": [],
+        "ours": "bandpass_moncrieff_1997_heat",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "bpcf_momentum",
+        "description": "EddyPro's analytic band-pass correction for the momentum flux",
+        "references": [],
+        "ours": "bandpass_moncrieff_1997_momentum",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      }
+    ],
+    "correction:density": [
+      {
+        "name": "webb_et_al_1980",
+        "description": "density (WPL) correction for a gas reported as a molar density",
+        "references": [],
+        "ours": "webb_et_al_1980",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      }
+    ],
+    "correction:conversion": [
+      {
+        "name": "ibrom_et_al_2007",
+        "description": "cell molar density to dry mixing ratio, per sample, from the cell state",
+        "references": [],
+        "ours": "molardensity_to_drymixingratio",
         "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
       }
     ]
