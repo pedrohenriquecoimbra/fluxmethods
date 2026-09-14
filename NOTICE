@@ -24,6 +24,21 @@ Despiking, VM97           Vickers & Mahrt (1997), J. Atmos. Ocean. Technol. 14, 
 Double/triple rotation    Wilczak et al. (2001), Boundary-Layer Meteorol. 99, 127-150
                           after Tanner & Thurtell (1969)
 Planar fit                Wilczak et al. (2001), same work, § 3
+Block-average detrending  Moncrieff et al. (2004)
+Linear detrending         Rannik & Vesala (1999)
+Time-lag maximisation     covariance maximisation, as in EddyPro's CovMax;
+                          cf. Fan et al. (1990), Aubinet et al. (2012)
+Low-pass look-up (LPFC)   a wind-speed/stability table, as GEddySoft applies it
 Resampling                no single reference: nearest-neighbour, linear
                           interpolation, block averaging and an FFT resampling,
                           as the acquisition software of a site happens to need.
+
+Known defect inherited with the code
+------------------------------------
+`signal.nanlinfit` deletes NaNs and fits against `arange` of what remains, so the
+fit runs on a compacted axis while `nandetrend` subtracts at the original
+indices. A straight line with an interior gap does not detrend to zero. It is
+kept as it stands because these files are verbatim copies and the equivalence
+claim is that they are the same code; the fix belongs in the reference
+implementation. `tests/test_signal_and_detrending.py` pins the behaviour and says
+so, and is what should start failing when it is fixed.

@@ -44,6 +44,14 @@ tested implementation of a single step to call from inside it.
 | `mauder_et_al_2013` | `mauder2013` — MAD despiking, per averaging period |
 | `vickers_et_al_1997` | `spike_detection_vickers97`, `linear_interpolate_spikes` |
 | `resampling` | `nearest`, `linear`, `fft_resample`, `block_average` |
+| `detrending` | `block_average`, `linear_detrend` |
+| `signal` | `xcov`, `nanlinfit`, `nandetrend` — the shared numerics |
+| `time_lag.commons` | `acq_freq`, `seconds_to_shift`, `shift_to_seconds` |
+| `time_lag.maximisation` | `time_lag`, `time_lag_w_default`, `lag_series`, `xcov_kernel` |
+| `time_lag.fixed` | `fix_time_lag` |
+| `time_lag.prescribed` | `prescribed_time_lag` and the three table loaders |
+| `spectral.lpfc` | `lpfc_lut`, `lookup_lpfc_cf`, `load_lpfc_lut_table` |
+| `spectral.sensor_table` | `sensor_geometry`, `load_sensor_geometry`, `stamp_manifest` |
 
 Full references are in [`NOTICE`](NOTICE).
 
@@ -72,6 +80,31 @@ mauder2013(xr.DataArray(x, dims=("date", "time"), name="w"), q=7)["w"]
 The resampling functions are plain `numpy`: `f(values, times, target)` with
 `int64` nanosecond timestamps, and bin edges at the midpoints between target
 points.
+
+**The lag estimators want a `time` coordinate in float seconds.** That is the
+reference implementation's convention, and `time_lag.commons.acq_freq` derives
+the rate by differencing it. Hand it a `datetime64` coordinate and the difference
+is in *nanoseconds*, so you get 1e-8 Hz and a silently wrong answer — pass
+`acq_freq=` explicitly if your data is timestamped.
+
+**`block_average` is two different methods.** In `detrending` it removes a
+period's mean and leaves the samples in place; in `resampling` it is the mean of
+the samples falling in each target interval. Neither is exported at the top
+level — reach for them through their module.
+
+## A known defect, kept deliberately
+
+`signal.nanlinfit` fits on a *compacted* axis — it deletes the NaNs and fits
+against `arange` of what is left — while `nandetrend` subtracts that trend at the
+original indices. So an exact straight line with one interior gap does not
+detrend to zero, and the residual grows along the series. Since despiking puts
+gaps in before detrending runs, this is not a rare input.
+
+It is **not fixed here**. These files are verbatim copies and the whole claim is
+that they are the same code as the reference implementation; correcting one side
+would break that. The fix belongs upstream, and
+`tests/test_signal_and_detrending.py` pins the current behaviour, names it a
+defect, and is what should start failing when it lands.
 
 ## What is deliberately not here
 

@@ -11,12 +11,13 @@
     "config of its own to read and no binary to run -- and the rows below carry",
     "no `selector`, because a collection has no settings to select a method by.",
     "",
-    "What the `collection` kind changes is what a twin MEANS (core/bridge.py,",
-    "and docs/meta/flux_library_protocol.md): the method now lives there, so the",
-    "twin supersedes the transcription rather than standing beside it as a",
-    "comparison -- and only where the checkout is actually present, since",
-    "registration needs none. The source is not a dependency: without it these",
-    "register, report unavailable, and every transcription goes on running here."
+    "",
+    "A row with `ours` and no `run` declares what the collection offers without",
+    "saying how to call it -- which is legitimate and, here, deliberate: the",
+    "marshalling of each shape is verified by bundling the descriptor and running",
+    "the protocol tests, and that is gated on four contracts listed in",
+    ".claude/plan/bundle_a_collection_descriptor.md. The two resampling rows were",
+    "verified that way before the descriptor was moved here."
   ],
   "library": {
     "schema": "flux-library/1",
@@ -38,6 +39,7 @@
         "description": "linear interpolation of each variable onto the target timestamps",
         "references": [],
         "ours": "linear",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:linear",
         "run": {
           "callable": "resampling:linear",
           "shape": "array",
@@ -50,14 +52,14 @@
             "passthrough"
           ],
           "description": "calls the collection's copy of this estimator in place of the transcription"
-        },
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:linear"
+        }
       },
       {
         "name": "block_average",
         "description": "mean of the samples falling in each target interval, on edges at the midpoints between target points",
         "references": [],
         "ours": "blockmean_interval",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:block_average",
         "run": {
           "callable": "resampling:block_average",
           "shape": "array",
@@ -70,8 +72,115 @@
             "passthrough"
           ],
           "description": "calls the collection's copy of this estimator in place of the transcription"
-        },
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as resampling:block_average"
+        }
+      },
+      {
+        "name": "nearest",
+        "description": "nearest measured sample to each target timestamp",
+        "references": [],
+        "ours": "nearest",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "fft_resample",
+        "description": "Fourier resampling onto the target rate, then nearest neighbours",
+        "references": [],
+        "ours": "fft_resample",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      }
+    ],
+    "correction:axis_rotation": [
+      {
+        "name": "double_rotation",
+        "description": "yaw then pitch, turning u into the mean wind and zeroing mean w",
+        "references": [],
+        "ours": "double_rotation",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "triple_rotation",
+        "description": "the double rotation plus a third zeroing the crosswind stress",
+        "references": [],
+        "ours": "triple_rotation",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "planarfit",
+        "description": "rotates into a plane fitted over many periods rather than per period",
+        "references": [],
+        "ours": "planarfit",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      }
+    ],
+    "correction:despiking": [
+      {
+        "name": "mauder2013",
+        "description": "median/MAD test, the statistic taken within each averaging period",
+        "references": [],
+        "ours": "mad_perperiod",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "spike_detection_vickers97",
+        "description": "repeated passes of a moving plausibility window",
+        "references": [],
+        "ours": "stddev_movingwindow",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      }
+    ],
+    "correction:detrending": [
+      {
+        "name": "block_average",
+        "description": "removes the period mean and leaves the samples where they are",
+        "references": [],
+        "ours": "block_average",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "linear_detrend",
+        "description": "removes a NaN-aware least-squares line",
+        "references": [],
+        "ours": "linear_detrend",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      }
+    ],
+    "correction:time_lag": [
+      {
+        "name": "time_lag",
+        "description": "slides the scalar against w and keeps the shift maximising |cov|",
+        "references": [],
+        "ours": "covmax_peak",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "time_lag_w_default",
+        "description": "the covariance peak, falling back to a nominal lag at a window edge",
+        "references": [],
+        "ours": "covmax_peak_nominalfallback",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "fix_time_lag",
+        "description": "applies a constant prescribed lag",
+        "references": [],
+        "ours": "fixed_nominal",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      },
+      {
+        "name": "prescribed_time_lag",
+        "description": "reads the lag for each period from a table",
+        "references": [],
+        "ours": "tabulated_perperiod",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+      }
+    ],
+    "correction:spectral": [
+      {
+        "name": "lpfc_lut",
+        "description": "low-pass correction factor from a wind-speed/stability look-up table",
+        "references": [],
+        "ours": "lowpass_lut_wind_stability",
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
       }
     ]
   }

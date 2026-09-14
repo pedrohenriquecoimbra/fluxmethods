@@ -15,6 +15,7 @@ import numpy as np
 import xarray as xr
 
 import fluxmethods
+from fluxmethods import resampling
 
 
 class TestImportsAreClean(unittest.TestCase):
@@ -24,9 +25,13 @@ class TestImportsAreClean(unittest.TestCase):
         does not have to have it installed."""
         self.assertNotIn("matplotlib.pyplot", sys.modules)
 
-    def test_every_exported_name_is_callable(self):
+    def test_every_exported_name_resolves(self):
+        """``__all__`` carries the modules as well as the methods: the modules
+        are the contract, and two steps here own a ``block_average`` each."""
+        import types
         for name in fluxmethods.__all__:
-            self.assertTrue(callable(getattr(fluxmethods, name)), name)
+            obj = getattr(fluxmethods, name)
+            self.assertTrue(callable(obj) or isinstance(obj, types.ModuleType), name)
 
 
 class TestRotation(unittest.TestCase):
@@ -104,7 +109,7 @@ class TestResampling(unittest.TestCase):
         lands in exactly one bin and none is counted twice or dropped."""
         times = np.arange(0, 10, dtype="int64") * 1_000_000_000
         target = np.arange(0, 10, 2, dtype="int64") * 1_000_000_000
-        out = np.asarray(fluxmethods.block_average(
+        out = np.asarray(resampling.block_average(
             np.arange(10.0), times, target))
         # edges at -1, 1, 3, 5, 7, 9 s: {0}, {1,2}, {3,4}, {5,6}, {7,8}
         np.testing.assert_allclose(out, [0.0, 1.5, 3.5, 5.5, 7.5])
@@ -112,7 +117,7 @@ class TestResampling(unittest.TestCase):
     def test_an_interval_with_no_finite_sample_is_nan(self):
         times = np.array([0, 1], dtype="int64") * 1_000_000_000
         target = np.array([0, 2, 4], dtype="int64") * 1_000_000_000
-        out = np.asarray(fluxmethods.block_average([1.0, np.nan], times, target))
+        out = np.asarray(resampling.block_average([1.0, np.nan], times, target))
         np.testing.assert_allclose(out[0], 1.0)
         self.assertTrue(np.isnan(out[1]) and np.isnan(out[2]))
 
