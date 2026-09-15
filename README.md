@@ -113,6 +113,13 @@ Every file is a verbatim copy except these, and each one is deliberate:
 4. `spectral/commons` is a **subset**: the seven helpers the estimators here call.
    The other thirteen bin, ensemble-average, transform or draw spectra; four of
    those need a unit registry and one needs matplotlib, and none is a method.
+
+   A subset still has to carry what the kept helpers *use*. Taking the thirteen
+   out once took `TRANSFER_FUNCTION_MODELS` and `curve_fit` with them, and both
+   survive an import and raise `NameError` at the first call — `cutoff_lut` did,
+   which is a published method failing on a name rather than on its physics. A
+   test that only asks `callable(...)` cannot see it, so the imports are pinned
+   by tests that resolve the names instead.
 5. `core/utils` is a **subset** too: `resolve_variable` alone, of seven. The rest
    is config parsing and path handling — a program's business, not a method's.
 6. `spectral/fitting_models` drops an import of `ureg` the module never used.
@@ -192,7 +199,7 @@ fix reaches this port.
 repository:
 
 ```
-pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.1
+pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.2
 ```
 
 Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`, `regorator`.

@@ -171,5 +171,41 @@ class TestFittedCorrectionsRun(unittest.TestCase):
         self.assertTrue(callable(measured.generic_experimental))
 
 
+class TestCommonsCarriesWhatItCalls(unittest.TestCase):
+    """The names ``commons`` uses but does not define itself.
+
+    ``commons`` is a *subset* of the reference implementation's module, and
+    subsetting it once dropped two of its imports: ``TRANSFER_FUNCTION_MODELS``
+    and ``curve_fit``. Both survive a module import and both raise ``NameError``
+    at the first call -- ``cutoff_lut`` did, which is a published method failing
+    on a name rather than on its physics. ``callable(...)`` cannot see that, so
+    these resolve the names instead.
+    """
+
+    def test_a_transfer_function_model_resolves_from_its_name(self):
+        from fluxmethods.spectral import commons
+        self.assertTrue(callable(commons._resolve_tf_model("lorentzian")))
+
+    def test_an_unknown_model_is_refused_by_name_and_not_by_NameError(self):
+        from fluxmethods.spectral import commons
+        with self.assertRaises(KeyError):
+            commons._resolve_tf_model("not_a_model")
+
+    def test_the_curve_fitter_the_module_fits_with_is_bound(self):
+        from fluxmethods.spectral import commons
+        self.assertTrue(callable(commons.curve_fit))
+
+    def test_the_cutoff_method_runs_rather_than_raising_on_a_name(self):
+        f = np.logspace(-3, 0.5, 64)
+        ratio = 1.0 / (1.0 + (f / 0.5) ** 2)
+        ds = xr.Dataset(
+            {"cospectrum_w_co2_norm_binned_ensemble": ("frequency", ratio),
+             "cospectrum_w_t_sonic_norm_binned_ensemble": ("frequency", np.ones(64)),
+             "frequency_bin": ("frequency", f)},
+            coords={"frequency": f})
+        out = measured.cutoff_lut(ds)
+        self.assertIn("cutoff_frequency_lorentzian", out.data_vars)
+
+
 if __name__ == "__main__":
     unittest.main()

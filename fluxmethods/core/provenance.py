@@ -22,6 +22,8 @@ import platform
 import sys
 from datetime import datetime, timezone
 
+logger = logging.getLogger(__name__)
+
 # Distribution names whose versions materially affect numerical results.
 _TRACKED_LIBS = (
     "pandas", "xarray", "numpy", "scipy", "Pint", "pint-xarray",

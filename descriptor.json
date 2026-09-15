@@ -20,30 +20,41 @@
     "verified that way before the descriptor was moved here.",
     "",
     "",
-    "Why the other 24 rows carry no `run`, which is a property of the functions",
-    "and not an omission. `shape: array` is what a descriptor can declare on its",
-    "own -- plain arrays in, one array back -- and the resampling four are the",
-    "only estimators here shaped that way. The rest fail that test for one of",
-    "four reasons, checked by calling each function rather than by reading it:",
+    "Seventeen of the twenty-eight rows now say how to call the method, in two",
+    "shapes. `array` is plain arrays in and one array back: the four resampling",
+    "rows, and they are the only estimators here shaped that way. `dataset:` --",
+    "the input role oneflux_preproc added in a717c34 -- hands the period over as",
+    "it stands, which is what the other thirteen want: every one of the eleven",
+    "`correction:spectral` estimators is `f(ds, ...)` reading its inputs out of",
+    "the Dataset by name, and so are density and conversion.",
     "",
-    "  * `ds` first: all eleven of `correction:spectral`, plus `correction:density`",
-    "    and `correction:conversion`, take a Dataset and read named variables out",
-    "    of it. There is no array signature to marshal to;",
-    "  * an xarray argument: the four `correction:time_lag` rows and the two",
-    "    `correction:detrending` rows reach for `.values`, `.shift` or `.stack`,",
-    "    so a plain ndarray raises AttributeError. They answer a Dataset as well;",
+    "What `dataset:` costs, recorded because the rows do not show it. All thirteen",
+    "return the *same object* they were handed, with their result added to it. So",
+    "the row names neither what the method read nor what it wrote, and an observer",
+    "diffing the period before against the period after sees one object and no",
+    "change. Where a routine plainly reads two variables and writes one, `series:`",
+    "roles would make a better record; these do not qualify, because the variables",
+    "they read are chosen by name at call time from arguments with defaults.",
+    "",
+    "",
+    "Why the remaining eleven carry no `run`. Not an omission -- a property of the",
+    "functions, established by calling each one rather than by reading it:",
+    "",
+    "  * they want a DataArray, and a Dataset is not one: the two",
+    "    `correction:detrending` rows, `mauder2013` and",
+    "    `spike_detection_vickers97`. Handed a Dataset they raise AttributeError",
+    "    (`.to_dataset`, `.data`), TypeError or KeyError, so the `dataset:` role",
+    "    does not reach them either;",
+    "  * they take two series rather than a period: the four `correction:time_lag`",
+    "    rows are `f(move, fix, ...)` and reach for `.values`/`.shift` on each;",
     "  * a composite return: the three `correction:axis_rotation` rows take plain",
     "    arrays but give back one object carrying u, v, w, theta and phi. A",
     "    `passthrough` is one return, and a facade wanting three series cannot",
-    "    read them out of it without code;",
-    "  * more than one array back: `spike_detection_vickers97` takes an ndarray",
-    "    and returns a (data, flags) pair, which is the same problem one row down.",
+    "    read them out of it without code. `spike_detection_vickers97` has the",
+    "    same problem one step down: it answers a (data, flags) pair.",
     "",
-    "Each of those is a decision per method -- an adapter, or a signature change",
-    "here -- and not a row to fill in. `mauder2013` and the detrending pair are",
-    "the closest: they are what the bridge's `series` preset describes (shape",
-    "`variable`, `args: [series:self]`), and what stands between them and it is",
-    "that they answer a Dataset where that preset writes back a series."
+    "Each is a decision per method -- an adapter there, or a signature change here",
+    "-- and not a row to fill in."
   ],
   "library": {
     "schema": "flux-library/1",
@@ -238,77 +249,198 @@
         "description": "recovers the low-frequency flux lost to block averaging",
         "references": [],
         "ours": "highpass_block_average",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.analytic:block_average_highpass",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       },
       {
         "name": "sonic_response",
         "description": "sonic path-averaging and dynamic-response loss from a model cospectrum",
         "references": [],
         "ours": "lowpass_analytic_sonic",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.analytic:sonic_response",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       },
       {
         "name": "analytic_tube",
         "description": "closed-path tube, IRGA path averaging and intake separation",
         "references": [],
         "ours": "lowpass_analytic_closedpath",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.analytic:analytic_tube",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       },
       {
         "name": "fully_analytical",
         "description": "first-order sensor response combined with sonic path averaging",
         "references": [],
         "ours": "lowpass_analytic_horst_1997",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.measured:fully_analytical",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+        }
       },
       {
         "name": "ibrom_et_al_2007",
         "description": "Lorentzian fitted to the measured gas/sonic power-spectral ratio",
         "references": [],
         "ours": "lowpass_insitu_ibrom_2007",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.measured:ibrom_et_al_2007",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+        }
       },
       {
         "name": "generic_experimental",
         "description": "fits an arbitrary transfer-function model to a measured spectral ratio",
         "references": [],
         "ours": "lowpass_insitu_fit",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.measured:generic_experimental",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+        }
       },
       {
         "name": "cutoff_lut",
         "description": "cut-off frequency fitted per stability class to the measured cospectra",
         "references": [],
         "ours": "lowpass_insitu_cutoff",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.measured:cutoff_lut",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       },
       {
         "name": "lpfc_lut",
         "description": "low-pass factor from a wind-speed/stability look-up table",
         "references": [],
         "ours": "lowpass_lut_wind_stability",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.lpfc:lpfc_lut",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       },
       {
         "name": "bpcf_moncrieff_97",
         "description": "EddyPro's analytic band-pass correction for closed-path gas fluxes",
         "references": [],
         "ours": "bandpass_moncrieff_1997_gas",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.eddypro:bpcf_moncrieff_97",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       },
       {
         "name": "bpcf_anemometric_fluxes",
         "description": "EddyPro's analytic band-pass correction for the sonic heat flux",
         "references": [],
         "ours": "bandpass_moncrieff_1997_heat",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.eddypro:bpcf_anemometric_fluxes",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       },
       {
         "name": "bpcf_momentum",
         "description": "EddyPro's analytic band-pass correction for the momentum flux",
         "references": [],
         "ours": "bandpass_moncrieff_1997_momentum",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.spectral.eddypro:bpcf_momentum",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+        }
       }
     ],
     "correction:density": [
@@ -317,7 +449,18 @@
         "description": "density (WPL) correction for a gas reported as a molar density",
         "references": [],
         "ours": "webb_et_al_1980",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.units.webb_et_al_1980:webb_et_al_1980",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+        }
       }
     ],
     "correction:conversion": [
@@ -326,7 +469,18 @@
         "description": "cell molar density to dry mixing ratio, per sample, from the cell state",
         "references": [],
         "ours": "molardensity_to_drymixingratio",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.units.ibrom_et_al_2007:ibrom_et_al_2007",
+          "shape": "dataset",
+          "args": [
+            "dataset:"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+        }
       }
     ]
   }

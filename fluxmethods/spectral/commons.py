@@ -16,8 +16,10 @@ import logging
 
 import numpy as np
 import xarray as xr
+from scipy.optimize import curve_fit
 
 from ..core.utils import resolve_variable
+from .fitting_models import TRANSFER_FUNCTION_MODELS
 
 logger = logging.getLogger(__name__)
 
