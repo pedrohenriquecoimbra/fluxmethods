@@ -189,15 +189,25 @@ fix reaches this port.
 ## Install
 
 ```
-pip install .
+pip install fluxmethods
 ```
 
 Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`, `regorator`.
 
-`pip install .[units]` adds `pint` for the two methods in `fluxmethods.units`.
+`pip install fluxmethods[units]` adds `pint` for the two methods in
+`fluxmethods.units`.
 That package is reached lazily, so `import fluxmethods` costs no unit registry
 and the other twenty-two methods do not need one. No plotting stack either: the
 one diagnostic plot imports `matplotlib` where it is drawn.
+
+`pip install -e .` from a checkout for the working copy.
+
+**The version is `fluxmethods.__version__`**, and that attribute is the single
+source: `pyproject.toml` reads it for the distribution version, so the import and
+`importlib.metadata.version("fluxmethods")` are the same string. It is an
+attribute rather than metadata because that is what `oneflux_preproc` reads —
+`core/provenance.py` takes `from .. import __version__` to stamp a run — and this
+tree is a copy of that one.
 
 ## Tests
 

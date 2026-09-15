@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "fluxmethods"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Eddy-covariance methods as plain functions: the estimators, without a program around them."
 readme = "README.md"
 license = "EUPL-1.2"
@@ -34,6 +34,12 @@ dependencies = [
 # `import fluxmethods` costs nothing without these and raises a plain ImportError
 # with them missing only if you ask for that package.
 units = ["pint>=0.20", "pint-xarray>=0.3"]
+
+# The version lives in ``fluxmethods/__init__.py`` because that attribute is the
+# one ``core.provenance`` reads. Pointing the distribution version at it keeps the
+# import-time attribute and the installed metadata the same string.
+[tool.setuptools.dynamic]
+version = {attr = "fluxmethods.__version__"}
 
 [tool.setuptools.packages.find]
 include = ["fluxmethods*"]

@@ -50,7 +50,11 @@ from .time_lag.fixed import fix_time_lag
 from .time_lag.maximisation import time_lag, time_lag_w_default
 from .time_lag.prescribed import prescribed_time_lag
 
-__version__ = "1.0.0"
+#: The one place the version is written. ``core.provenance`` reads it as
+#: ``from .. import __version__`` -- the convention ``oneflux_preproc`` uses for
+#: the same file -- and ``pyproject.toml`` reads *this* assignment for the
+#: distribution version, so the attribute and the installed metadata cannot drift.
+__version__ = "0.1.0"
 
 __all__ = [
     # the steps and the shared layers, which are the contract
