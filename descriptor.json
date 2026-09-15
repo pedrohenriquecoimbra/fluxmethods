@@ -16,8 +16,34 @@
     "saying how to call it -- which is legitimate and, here, deliberate: the",
     "marshalling of each shape is verified by bundling the descriptor and running",
     "the protocol tests, and that is gated on four contracts listed in",
-    ".claude/plan/bundle_a_collection_descriptor.md. The two resampling rows were",
-    "verified that way before the descriptor was moved here."
+    ".claude/plan/bundle_a_collection_descriptor.md. The four resampling rows were",
+    "verified that way before the descriptor was moved here.",
+    "",
+    "",
+    "Why the other 24 rows carry no `run`, which is a property of the functions",
+    "and not an omission. `shape: array` is what a descriptor can declare on its",
+    "own -- plain arrays in, one array back -- and the resampling four are the",
+    "only estimators here shaped that way. The rest fail that test for one of",
+    "four reasons, checked by calling each function rather than by reading it:",
+    "",
+    "  * `ds` first: all eleven of `correction:spectral`, plus `correction:density`",
+    "    and `correction:conversion`, take a Dataset and read named variables out",
+    "    of it. There is no array signature to marshal to;",
+    "  * an xarray argument: the four `correction:time_lag` rows and the two",
+    "    `correction:detrending` rows reach for `.values`, `.shift` or `.stack`,",
+    "    so a plain ndarray raises AttributeError. They answer a Dataset as well;",
+    "  * a composite return: the three `correction:axis_rotation` rows take plain",
+    "    arrays but give back one object carrying u, v, w, theta and phi. A",
+    "    `passthrough` is one return, and a facade wanting three series cannot",
+    "    read them out of it without code;",
+    "  * more than one array back: `spike_detection_vickers97` takes an ndarray",
+    "    and returns a (data, flags) pair, which is the same problem one row down.",
+    "",
+    "Each of those is a decision per method -- an adapter, or a signature change",
+    "here -- and not a row to fill in. `mauder2013` and the detrending pair are",
+    "the closest: they are what the bridge's `series` preset describes (shape",
+    "`variable`, `args: [series:self]`), and what stands between them and it is",
+    "that they answer a Dataset where that preset writes back a series."
   ],
   "library": {
     "schema": "flux-library/1",
@@ -85,14 +111,40 @@
         "description": "nearest measured sample to each target timestamp",
         "references": [],
         "ours": "nearest",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as fluxmethods.resampling.commonly_used:nearest",
+        "run": {
+          "callable": "fluxmethods.resampling.commonly_used:nearest",
+          "shape": "array",
+          "args": [
+            "arg:values",
+            "arg:times",
+            "arg:target"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "fft_resample",
         "description": "Fourier resampling onto the target rate, then nearest neighbours",
         "references": [],
         "ours": "fft_resample",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods as fluxmethods.resampling.commonly_used:fft_resample",
+        "run": {
+          "callable": "fluxmethods.resampling.commonly_used:fft_resample",
+          "shape": "array",
+          "args": [
+            "arg:values",
+            "arg:times",
+            "arg:target"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       }
     ],
     "correction:axis_rotation": [

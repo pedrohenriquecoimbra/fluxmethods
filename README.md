@@ -188,14 +188,17 @@ fix reaches this port.
 
 ## Install
 
+**Not on PyPI yet** — `pip install fluxmethods` does not work. Install from the
+repository:
+
 ```
-pip install fluxmethods
+pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.0
 ```
 
 Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`, `regorator`.
 
-`pip install fluxmethods[units]` adds `pint` for the two methods in
-`fluxmethods.units`.
+Append `#egg=fluxmethods[units]` to that URL, or `pip install .[units]` from a
+checkout, to add `pint` for the two methods in `fluxmethods.units`.
 That package is reached lazily, so `import fluxmethods` costs no unit registry
 and the other twenty-two methods do not need one. No plotting stack either: the
 one diagnostic plot imports `matplotlib` where it is drawn.
