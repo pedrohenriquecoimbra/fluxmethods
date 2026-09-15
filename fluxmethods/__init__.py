@@ -54,7 +54,7 @@ from .time_lag.prescribed import prescribed_time_lag
 #: ``from .. import __version__`` -- the convention ``oneflux_preproc`` uses for
 #: the same file -- and ``pyproject.toml`` reads *this* assignment for the
 #: distribution version, so the attribute and the installed metadata cannot drift.
-__version__ = "0.1.2"
+__version__ = "0.1.3"
 
 __all__ = [
     # the steps and the shared layers, which are the contract

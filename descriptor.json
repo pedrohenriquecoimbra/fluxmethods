@@ -259,7 +259,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       },
       {
@@ -277,7 +277,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       },
       {
@@ -295,7 +295,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       },
       {
@@ -313,7 +313,8 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+          "description": "calls the collection's copy of this estimator in place of the transcription",
+          "_comment": "declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
         }
       },
       {
@@ -331,7 +332,8 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+          "description": "calls the collection's copy of this estimator in place of the transcription",
+          "_comment": "declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
         }
       },
       {
@@ -349,7 +351,8 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+          "description": "calls the collection's copy of this estimator in place of the transcription",
+          "_comment": "declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
         }
       },
       {
@@ -367,7 +370,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       },
       {
@@ -385,7 +388,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       },
       {
@@ -403,7 +406,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       },
       {
@@ -421,7 +424,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       },
       {
@@ -439,7 +442,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; called on a dataset and seen to answer one"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       }
     ],
@@ -459,7 +462,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       }
     ],
@@ -479,7 +482,7 @@
           "outputs": [
             "passthrough"
           ],
-          "description": "calls the collection's copy of this estimator in place of the transcription; declared from its signature; not called here, because the binned ensemble spectra it reads could not be synthesised"
+          "description": "calls the collection's copy of this estimator in place of the transcription"
         }
       }
     ]
