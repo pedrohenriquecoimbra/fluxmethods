@@ -6,8 +6,8 @@ There is no program here. No pipeline, no configuration file, no registry, no
 I/O, no units layer — only the estimators, each one importable on its own:
 
 ```python
-from fluxmethods.wilczak_et_al_2001 import double_rotation
-from fluxmethods.mauder_et_al_2013 import mauder2013
+from fluxmethods.axis_rotation.wilczak_et_al_2001 import double_rotation
+from fluxmethods.despiking.mauder_et_al_2013 import mauder2013
 ```
 
 Each module is named for the work it implements, so a citation and an import are
