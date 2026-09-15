@@ -28,6 +28,11 @@ dependencies = [
     "xarray>=2023.1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/pedrohenriquecoimbra/fluxmethods"
+Repository = "https://github.com/pedrohenriquecoimbra/fluxmethods"
+Issues = "https://github.com/pedrohenriquecoimbra/fluxmethods/issues"
+
 [project.optional-dependencies]
 # Only `fluxmethods.units` needs a unit registry -- the WPL density correction
 # and the Ibrom conversion, two methods of twenty-four. It is reached lazily, so
