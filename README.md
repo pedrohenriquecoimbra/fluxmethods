@@ -199,7 +199,7 @@ fix reaches this port.
 repository:
 
 ```
-pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.3
+pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.4
 ```
 
 Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`, `regorator`.
