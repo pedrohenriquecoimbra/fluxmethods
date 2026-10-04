@@ -12,21 +12,21 @@
     "no `selector`, because a collection has no settings to select a method by.",
     "",
     "",
-    "A row with `ours` and no `run` declares what the collection offers without",
-    "saying how to call it -- which is legitimate and, here, deliberate: the",
-    "marshalling of each shape is verified by bundling the descriptor and running",
-    "the protocol tests, and that is gated on four contracts listed in",
-    ".claude/plan/bundle_a_collection_descriptor.md. The four resampling rows were",
-    "verified that way before the descriptor was moved here.",
+    "Every row says how to call the method, in three shapes. `dataset:` hands the",
+    "period over as it stands, which is what thirteen want: every one of the eleven",
+    "`correction:spectral` estimators is `f(ds, ...)` reading its inputs out of the",
+    "Dataset by name, and so are density and conversion. `array` is a call taken",
+    "as the transcription takes it -- each `arg:` is the argument the facade",
+    "handed over, and `passthrough` gives the facade back whatever the estimator",
+    "answered. That is the four resampling rows; the two detrending rows and",
+    "`mauder2013`, which want a DataArray and answer a Dataset; the four",
+    "`correction:time_lag` rows, which are `f(move, fix, ...)`; and the three",
+    "`correction:axis_rotation` rows, whose one object carrying u, v, w, theta",
+    "and phi is read by the facade that already reads it from the transcription.",
+    "`variable` is one series in and the same series back:",
+    "`spike_detection_vickers97`, which answers a (data, flags) pair of which the",
+    "flags are dropped, as the transcription's own wrapper drops them.",
     "",
-    "",
-    "Seventeen of the twenty-eight rows now say how to call the method, in two",
-    "shapes. `array` is plain arrays in and one array back: the four resampling",
-    "rows, and they are the only estimators here shaped that way. `dataset:` --",
-    "the input role oneflux_preproc added in a717c34 -- hands the period over as",
-    "it stands, which is what the other thirteen want: every one of the eleven",
-    "`correction:spectral` estimators is `f(ds, ...)` reading its inputs out of",
-    "the Dataset by name, and so are density and conversion.",
     "",
     "What `dataset:` costs, recorded because the rows do not show it. All thirteen",
     "return the *same object* they were handed, with their result added to it. So",
@@ -37,24 +37,11 @@
     "they read are chosen by name at call time from arguments with defaults.",
     "",
     "",
-    "Why the remaining eleven carry no `run`. Not an omission -- a property of the",
-    "functions, established by calling each one rather than by reading it:",
-    "",
-    "  * they want a DataArray, and a Dataset is not one: the two",
-    "    `correction:detrending` rows, `mauder2013` and",
-    "    `spike_detection_vickers97`. Handed a Dataset they raise AttributeError",
-    "    (`.to_dataset`, `.data`), TypeError or KeyError, so the `dataset:` role",
-    "    does not reach them either;",
-    "  * they take two series rather than a period: the four `correction:time_lag`",
-    "    rows are `f(move, fix, ...)` and reach for `.values`/`.shift` on each;",
-    "  * a composite return: the three `correction:axis_rotation` rows take plain",
-    "    arrays but give back one object carrying u, v, w, theta and phi. A",
-    "    `passthrough` is one return, and a facade wanting three series cannot",
-    "    read them out of it without code. `spike_detection_vickers97` has the",
-    "    same problem one step down: it answers a (data, flags) pair.",
-    "",
-    "Each is a decision per method -- an adapter there, or a signature change here",
-    "-- and not a row to fill in."
+    "The `array` rows share that cost from the other side: an `arg:` names a",
+    "parameter of the call, not a variable of the period, so what was read is the",
+    "facade's to say. Each of the eleven rows added after the first seventeen was",
+    "replayed against its transcription on the arguments a run hands it, and gave",
+    "the same answer."
   ],
   "library": {
     "schema": "flux-library/1",
@@ -164,21 +151,72 @@
         "description": "yaw then pitch, turning u into the mean wind and zeroing mean w",
         "references": [],
         "ours": "double_rotation",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.axis_rotation.wilczak_et_al_2001:double_rotation",
+          "shape": "array",
+          "args": [
+            "arg:u",
+            "arg:v",
+            "arg:w"
+          ],
+          "kwargs": {
+            "verbosity": "arg:verbosity"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "triple_rotation",
         "description": "the double rotation plus a third zeroing the crosswind stress",
         "references": [],
         "ours": "triple_rotation",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.axis_rotation.wilczak_et_al_2001:triple_rotation",
+          "shape": "array",
+          "args": [
+            "arg:u",
+            "arg:v",
+            "arg:w"
+          ],
+          "kwargs": {
+            "verbosity": "arg:verbosity"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "planarfit",
         "description": "rotates into a plane fitted over many periods rather than per period",
         "references": [],
         "ours": "planarfit",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.axis_rotation.wilczak_et_al_2001:planarfit",
+          "shape": "array",
+          "args": [
+            "arg:u",
+            "arg:v",
+            "arg:w"
+          ],
+          "kwargs": {
+            "verbosity": "arg:verbosity",
+            "b0": "arg:b0",
+            "b1": "arg:b1",
+            "b2": "arg:b2"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       }
     ],
     "correction:despiking": [
@@ -187,14 +225,85 @@
         "description": "median/MAD test, the statistic taken within each averaging period",
         "references": [],
         "ours": "mad_perperiod",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.despiking.mauder_et_al_2013:mauder2013",
+          "shape": "array",
+          "args": [
+            "arg:x"
+          ],
+          "kwargs": {
+            "q": "arg:q",
+            "n": "arg:n",
+            "max_consec_spikes": "arg:max_consec_spikes"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "spike_detection_vickers97",
         "description": "repeated passes of a moving plausibility window",
         "references": [],
         "ours": "stddev_movingwindow",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.despiking.vickers_et_al_1997:spike_detection_vickers97",
+          "shape": "variable",
+          "args": [
+            "series:self"
+          ],
+          "kwargs": {
+            "spike_mode": "param:spike_mode",
+            "max_pass": "param:max_pass",
+            "avrg_len": "param:avrg_len",
+            "ac_freq": "param:ac_freq",
+            "spike_limit": "param:spike_limit",
+            "max_consec_spikes": "param:max_consec_spikes",
+            "ctrplot": "param:ctrplot"
+          },
+          "params": {
+            "spike_mode": {
+              "type": "int"
+            },
+            "max_pass": {
+              "type": "int"
+            },
+            "avrg_len": {
+              "type": "int"
+            },
+            "ac_freq": {
+              "type": "int",
+              "empty": 0
+            },
+            "spike_limit": {
+              "type": "float"
+            },
+            "max_consec_spikes": {
+              "type": "int"
+            },
+            "ctrplot": {
+              "type": "bool"
+            }
+          },
+          "outputs": [
+            "series:self",
+            "ignore"
+          ],
+          "guards": [
+            {
+              "when": {
+                "param": "ac_freq",
+                "at_most": 0
+              },
+              "then": "identity",
+              "say": "{name} needs a positive acquisition frequency and was given {value!r}; leaving {var} unchanged."
+            }
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       }
     ],
     "correction:detrending": [
@@ -203,14 +312,36 @@
         "description": "removes the period mean and leaves the samples where they are",
         "references": [],
         "ours": "block_average",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.detrending.commonly_used:block_average",
+          "shape": "array",
+          "args": [
+            "arg:x"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "linear_detrend",
         "description": "removes a NaN-aware least-squares line",
         "references": [],
         "ours": "linear_detrend",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.detrending.commonly_used:linear_detrend",
+          "shape": "array",
+          "args": [
+            "arg:x"
+          ],
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       }
     ],
     "correction:time_lag": [
@@ -219,28 +350,108 @@
         "description": "slides the scalar against w and keeps the shift maximising |cov|",
         "references": [],
         "ours": "covmax_peak",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.time_lag.maximisation:time_lag",
+          "shape": "array",
+          "args": [
+            "arg:move",
+            "arg:fix"
+          ],
+          "kwargs": {
+            "tlag": "arg:tlag",
+            "tlag_min": "arg:tlag_min",
+            "tlag_max": "arg:tlag_max",
+            "outer": "arg:outer",
+            "covpeak_filter_length": "arg:covpeak_filter_length",
+            "acq_freq": "arg:acq_freq",
+            "lag_units": "arg:lag_units",
+            "xcov": "arg:xcov"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "time_lag_w_default",
         "description": "the covariance peak, falling back to a nominal lag at a window edge",
         "references": [],
         "ours": "covmax_peak_nominalfallback",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.time_lag.maximisation:time_lag_w_default",
+          "shape": "array",
+          "args": [
+            "arg:move",
+            "arg:fix"
+          ],
+          "kwargs": {
+            "tlag": "arg:tlag",
+            "tlag_min": "arg:tlag_min",
+            "tlag_max": "arg:tlag_max",
+            "outer": "arg:outer",
+            "covpeak_filter_length": "arg:covpeak_filter_length",
+            "acq_freq": "arg:acq_freq",
+            "lag_units": "arg:lag_units",
+            "xcov": "arg:xcov"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "fix_time_lag",
         "description": "applies a constant prescribed lag",
         "references": [],
         "ours": "fixed_nominal",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.time_lag.fixed:fix_time_lag",
+          "shape": "array",
+          "args": [
+            "arg:move"
+          ],
+          "kwargs": {
+            "fix": "arg:fix",
+            "tlag": "arg:tlag",
+            "acq_freq": "arg:acq_freq",
+            "lag_units": "arg:lag_units"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       },
       {
         "name": "prescribed_time_lag",
         "description": "reads the lag for each period from a table",
         "references": [],
         "ours": "tabulated_perperiod",
-        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods"
+        "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",
+        "run": {
+          "callable": "fluxmethods.time_lag.prescribed:prescribed_time_lag",
+          "shape": "array",
+          "args": [
+            "arg:move"
+          ],
+          "kwargs": {
+            "fix": "arg:fix",
+            "lag_table": "arg:lag_table",
+            "date": "arg:date",
+            "tlag": "arg:tlag",
+            "acq_freq": "arg:acq_freq",
+            "lag_samples": "arg:lag_samples"
+          },
+          "outputs": [
+            "passthrough"
+          ],
+          "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
       }
     ],
     "correction:spectral": [
