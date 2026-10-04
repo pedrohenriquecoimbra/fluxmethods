@@ -62,6 +62,24 @@ class TestRotation(unittest.TestCase):
         self.assertAlmostEqual(float(out.theta), math.atan2(4.0, 3.0), places=12)
         self.assertAlmostEqual(float(out.phi), 0.0, places=12)
 
+    def test_a_planar_fit_takes_a_period_in_the_shape_it_is_handed(self):
+        """A caller hands one period over as (date, time); the fit is over its
+        samples, and the components come back in the shape they went in."""
+        from fluxmethods.axis_rotation.wilczak_et_al_2001 import planarfit
+
+        rng = np.random.default_rng(0)
+        u = 2.0 + rng.normal(0, 0.5, 2000)
+        v = rng.normal(0, 0.5, 2000)
+        w = 0.1 + 0.05 * u + rng.normal(0, 0.2, 2000)
+
+        flat = planarfit(u, v, w)
+        period = planarfit(u[np.newaxis, :], v[np.newaxis, :], w[np.newaxis, :])
+        for name in ("u", "v", "w"):
+            self.assertEqual(getattr(period, name).shape, (1, 2000))
+            np.testing.assert_array_equal(getattr(period, name)[0],
+                                          getattr(flat, name))
+        self.assertAlmostEqual(float(np.mean(flat.w)), 0.0, places=6)
+
 
 class TestDespiking(unittest.TestCase):
     """``mauder2013`` is xarray-native and forms its statistic *within* each

@@ -167,10 +167,12 @@ def planarfit(u, v, w, verbosity=0, b0=None, b1=None, b2=None):
         tuple: Corrected u, v, w components after planar fit correction.
     """
 
-    # Ensure inputs are numpy arrays
-    u = np.asarray(u)
-    v = np.asarray(v)
-    w = np.asarray(w)
+    # One series per component: the rotation below is built on a 3 x N matrix,
+    # and a period arrives as (date, time). The shape goes back on the way out.
+    shape = np.shape(u)
+    u = np.asarray(u).ravel()
+    v = np.asarray(v).ravel()
+    w = np.asarray(w).ravel()
 
     meanU = np.nanmean(u)
     meanV = np.nanmean(v)
@@ -214,9 +216,9 @@ def planarfit(u, v, w, verbosity=0, b0=None, b1=None, b2=None):
 
     A1 = R1.T * ((R3.T * R2.T) * np.matrix([u, v, w - b0]))
 
-    U1 = np.array(A1[0])[0]
-    V1 = np.array(A1[1])[0]
-    W1 = np.array(A1[2])[0]
+    U1 = np.array(A1[0])[0].reshape(shape)
+    V1 = np.array(A1[1])[0].reshape(shape)
+    W1 = np.array(A1[2])[0].reshape(shape)
 
     if verbosity > 0:
         print(f"Planar fit angles: α={α}, β={np.arctan2(sinβ, cosβ)}, γ={np.arctan2(sinγ, cosγ)}")
