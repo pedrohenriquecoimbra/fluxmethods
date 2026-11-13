@@ -13,7 +13,7 @@ from fluxmethods.despiking.mauder_et_al_2013 import mauder2013
 Each module is named for the work it implements, so a citation and an import are
 the same string.
 
-The functions are Python. One of them is also here in R and in Julia, as a file
+The functions are Python. Two of them are also here in R and in Julia, as a file
 of the same name beside the Python one, held to the same numbers:
 [one method, three languages](#one-method-three-languages).
 
@@ -69,13 +69,21 @@ should be one you can name. They are all named below.
 
 ## One method, three languages
 
-`double_rotation` is here three times:
+`double_rotation` and the detrending `block_average` are each here three times:
 
 | file | language | call |
 |---|---|---|
 | `axis_rotation/wilczak_et_al_2001.py` | Python | `double_rotation(u, v, w)` → an object with `u`, `v`, `w`, `theta`, `phi` |
 | `axis_rotation/wilczak_et_al_2001.R` | R | `double_rotation(u, v, w)` → a list of the same names |
 | `axis_rotation/wilczak_et_al_2001.jl` | Julia | `double_rotation(u, v, w)` → a named tuple of the same names |
+| `detrending/commonly_used.py` | Python | `block_average(x)`, a named DataArray → a Dataset |
+| `detrending/commonly_used.R` | R | `block_average(x)` → the series |
+| `detrending/commonly_used.jl` | Julia | `block_average(x)` → the series |
+
+`block_average` is its mean and nothing else, so with the summation below its
+three are identical bit for bit, with nothing set aside. Each file carries the
+summation itself rather than sharing it: a file is then all of the code a call
+of it runs, which is what its digest in a run's record claims.
 
 **The Python file is the method. The other two are translations of it**, and
 that is all they are: statement for statement, the same operations in the same
@@ -158,9 +166,12 @@ method = double_rotation@fluxmethods_r        # the R translation
 method = double_rotation@fluxmethods_julia    # the Julia translation
 ```
 
-and a run is stamped with the file of the language that ran and its digest.
-`oneflux_preproc` runs its sample chain once with each and compares every
-output (`scripts/compare_languages.py` there).
+and likewise `block_average@fluxmethods_r` and `@fluxmethods_julia` for the
+detrending. A run is stamped with the file of the language that ran and its
+digest. `oneflux_preproc` runs its sample chain once with each rotation and
+compares every output (`scripts/compare_languages.py` there), and once with a
+different language at each step — despiking in Python, rotation in R,
+detrending in Julia (`scripts/mixed_language_pipeline.py`).
 
 ### Adding a translation
 

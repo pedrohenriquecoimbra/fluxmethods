@@ -44,9 +44,10 @@
     "the same answer.",
     "",
     "",
-    "Two rows are not Python. `double_rotation (R)` and `double_rotation (Julia)`",
-    "are the translations of `double_rotation` that sit beside it, and each is",
-    "the row of a provider of its own: see `_languages` in the library block."
+    "Four rows are not Python. `double_rotation (R)`, `double_rotation (Julia)`,",
+    "`block_average (R)` and `block_average (Julia)` are the translations that",
+    "sit beside the method they translate, and each is the row of a provider of",
+    "its own: see `_languages` in the library block."
   ],
   "library": {
     "schema": "flux-library/1",
@@ -81,8 +82,9 @@
       "is a provider of its own -- `<method>@fluxmethods_r`,",
       "`<method>@fluxmethods_julia` -- answering the rows whose `run` says that",
       "`language`, and such a row's callable is `<path under the source>:<function>`.",
-      "It takes the wind as flat arrays (`flat:`) and answers with named values",
-      "(`record`), which is what crosses between languages."
+      "A rotation takes the wind as flat arrays (`flat:`) and answers with named",
+      "values (`record`); a detrending takes one series and answers with it",
+      "(`series:self`). Either is what crosses between languages."
     ]
   },
   "methods": {
@@ -422,6 +424,44 @@
             "passthrough"
           ],
           "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
+      },
+      {
+        "name": "block_average (R)",
+        "description": "the block average, translated into R statement for statement",
+        "references": [],
+        "ours": "block_average",
+        "no_scientific_reference": "a translation of this package's own estimator, published by fluxmethods",
+        "run": {
+          "language": "r",
+          "callable": "detrending/commonly_used.R:block_average",
+          "shape": "variable",
+          "args": [
+            "series:self"
+          ],
+          "outputs": [
+            "series:self"
+          ],
+          "description": "calls the collection's R translation of this estimator in place of the transcription"
+        }
+      },
+      {
+        "name": "block_average (Julia)",
+        "description": "the block average, translated into Julia statement for statement",
+        "references": [],
+        "ours": "block_average",
+        "no_scientific_reference": "a translation of this package's own estimator, published by fluxmethods",
+        "run": {
+          "language": "julia",
+          "callable": "detrending/commonly_used.jl:block_average",
+          "shape": "variable",
+          "args": [
+            "series:self"
+          ],
+          "outputs": [
+            "series:self"
+          ],
+          "description": "calls the collection's Julia translation of this estimator in place of the transcription"
         }
       },
       {

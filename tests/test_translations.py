@@ -2,7 +2,10 @@
 
 A method here may have a translation beside it: `wilczak_et_al_2001.R` and
 `wilczak_et_al_2001.jl` are `double_rotation` of `wilczak_et_al_2001.py`,
-statement for statement. This runs each on one wind and compares.
+statement for statement, and `detrending/commonly_used.R` and `.jl` are
+`block_average` of `commonly_used.py`. This runs each on one wind and compares.
+The block average has no arctangent in it, so its three are identical with
+nothing set aside; the rotation's claims are the three below.
 
 There is no bridge in this repository, so the wind and the answers cross in
 raw float64 files, which is exact. Each language is run by its own program
@@ -106,6 +109,42 @@ def translated(language, u, v, w):
         return np.fromfile(scratch / "out.bin", dtype="<f8")
 
 
+BLOCK_R = '''
+arguments <- commandArgs(trailingOnly = TRUE)
+source(arguments[[1L]])
+a <- readBin(arguments[[2L]], "double", n = {size}L, size = 8L, endian = "little")
+writeBin(block_average(a), arguments[[3L]], size = 8L, endian = "little")
+'''
+
+BLOCK_JULIA = '''
+include(ARGS[1])
+a = Vector{{Float64}}(undef, {size})
+read!(ARGS[2], a)
+write(ARGS[3], block_average(a))
+'''
+
+
+def block_averaged(language, series):
+    """The translation's block average, or ``None`` without its program."""
+    program, source, text, flags = {
+        "r": ("Rscript", "commonly_used.R", BLOCK_R, ["--vanilla"]),
+        "julia": ("julia", "commonly_used.jl", BLOCK_JULIA,
+                  ["--startup-file=no"]),
+    }[language]
+    if shutil.which(program) is None:
+        return None
+    with tempfile.TemporaryDirectory() as scratch:
+        scratch = pathlib.Path(scratch)
+        script = scratch / ("run" + pathlib.Path(source).suffix)
+        script.write_text(text.format(size=series.size), encoding="ascii")
+        series.astype("<f8").tofile(scratch / "in.bin")
+        subprocess.run([program, *flags, str(script),
+                        str(HERE.parent / "detrending" / source),
+                        str(scratch / "in.bin"), str(scratch / "out.bin")],
+                       check=True, capture_output=True, timeout=600)
+        return np.fromfile(scratch / "out.bin", dtype="<f8")
+
+
 def same(a, b):
     """Bit for bit, one NaN being another: a NaN's sign is not a value."""
     return bool(np.all((a == b) | (np.isnan(a) & np.isnan(b))))
@@ -176,6 +215,29 @@ class TestTranslationsOfTheDoubleRotation(unittest.TestCase):
         for n in list(range(1, 300)) + [1000, 4097, 36000, 36001]:
             a = rng.normal(size=n) * 10 ** rng.uniform(-3, 3)
             self.assertEqual(float(np.sum(a)), pairwise(a), n)
+
+
+class TestTranslationsOfTheBlockAverage(unittest.TestCase):
+    def test_each_is_the_python_bit_for_bit(self):
+        import xarray as xr
+
+        from fluxmethods.detrending.commonly_used import block_average
+
+        series = 300 + wind(seed=5)[0]
+        expected = block_average(
+            xr.DataArray(series, dims="time", name="ts"))["ts"].values
+        ran = 0
+        for language in ("r", "julia"):
+            answer = block_averaged(language, series)
+            if answer is None:
+                continue
+            ran += 1
+            with self.subTest(language=language):
+                self.assertTrue(same(answer, expected))
+                self.assertTrue(np.array_equal(np.isnan(answer),
+                                               np.isnan(series)))
+        if not ran:
+            self.skipTest("neither Rscript nor julia is on PATH")
 
 
 if __name__ == "__main__":

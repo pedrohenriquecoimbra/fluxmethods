@@ -58,3 +58,4 @@ include = ["fluxmethods*"]
 # read by whoever calls it in that language. Not a module, so it has to be
 # named to be shipped.
 "fluxmethods.axis_rotation" = ["*.R", "*.jl"]
+"fluxmethods.detrending" = ["*.R", "*.jl"]
