@@ -41,7 +41,12 @@
     "parameter of the call, not a variable of the period, so what was read is the",
     "facade's to say. Each of the eleven rows added after the first seventeen was",
     "replayed against its transcription on the arguments a run hands it, and gave",
-    "the same answer."
+    "the same answer.",
+    "",
+    "",
+    "Two rows are not Python. `double_rotation (R)` and `double_rotation (Julia)`",
+    "are the translations of `double_rotation` that sit beside it, and each is",
+    "the row of a provider of its own: see `_languages` in the library block."
   ],
   "library": {
     "schema": "flux-library/1",
@@ -60,6 +65,24 @@
       "its modules are reached as `fluxmethods.<step>.<module>`. A `flat` layout",
       "would import them under bare names, and `signal` would shadow the standard",
       "library module of that name for the duration of the call."
+    ],
+    "r": {
+      "engine": "fluxmethods_r",
+      "label": "fluxmethods (R)"
+    },
+    "julia": {
+      "engine": "fluxmethods_julia",
+      "label": "fluxmethods (Julia)"
+    },
+    "_languages": [
+      "A method may be here in more than one language. The Python file is the",
+      "method; an R or a Julia file of the same name beside it is a translation",
+      "of it, statement for statement, held to the same numbers. Each language",
+      "is a provider of its own -- `<method>@fluxmethods_r`,",
+      "`<method>@fluxmethods_julia` -- answering the rows whose `run` says that",
+      "`language`, and such a row's callable is `<path under the source>:<function>`.",
+      "It takes the wind as flat arrays (`flat:`) and answers with named values",
+      "(`record`), which is what crosses between languages."
     ]
   },
   "methods": {
@@ -167,6 +190,82 @@
             "passthrough"
           ],
           "description": "calls the collection's copy of this estimator in place of the transcription"
+        }
+      },
+      {
+        "name": "double_rotation (R)",
+        "description": "the double rotation, translated into R statement for statement",
+        "references": [],
+        "ours": "double_rotation",
+        "no_scientific_reference": "a translation of this package's own estimator, published by fluxmethods",
+        "run": {
+          "language": "r",
+          "callable": "axis_rotation/wilczak_et_al_2001.R:double_rotation",
+          "shape": "array",
+          "args": [
+            "flat:u",
+            "flat:v",
+            "flat:w"
+          ],
+          "kwargs": {
+            "verbosity": "arg:verbosity"
+          },
+          "outputs": [
+            {
+              "role": "record",
+              "names": [
+                "u",
+                "v",
+                "w",
+                "theta",
+                "phi"
+              ],
+              "like": {
+                "u": "u",
+                "v": "v",
+                "w": "w"
+              }
+            }
+          ],
+          "description": "calls the collection's R translation of this estimator in place of the transcription"
+        }
+      },
+      {
+        "name": "double_rotation (Julia)",
+        "description": "the double rotation, translated into Julia statement for statement",
+        "references": [],
+        "ours": "double_rotation",
+        "no_scientific_reference": "a translation of this package's own estimator, published by fluxmethods",
+        "run": {
+          "language": "julia",
+          "callable": "axis_rotation/wilczak_et_al_2001.jl:double_rotation",
+          "shape": "array",
+          "args": [
+            "flat:u",
+            "flat:v",
+            "flat:w"
+          ],
+          "kwargs": {
+            "verbosity": "arg:verbosity"
+          },
+          "outputs": [
+            {
+              "role": "record",
+              "names": [
+                "u",
+                "v",
+                "w",
+                "theta",
+                "phi"
+              ],
+              "like": {
+                "u": "u",
+                "v": "v",
+                "w": "w"
+              }
+            }
+          ],
+          "description": "calls the collection's Julia translation of this estimator in place of the transcription"
         }
       },
       {

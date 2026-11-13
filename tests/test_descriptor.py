@@ -30,6 +30,14 @@ ROLE_SPEC = re.compile(r"^[a-z_]+:?[A-Za-z0-9_$.]*$")
 #: a violation costs a tag and a re-pin to find out.
 DESCRIPTION_LIMIT = 160
 
+#: The package directory, which a translation's callable is written relative to.
+PACKAGE = DESCRIPTOR.parent / "fluxmethods"
+
+#: How a function is defined in each language a row may say, as a pattern over
+#: the file: enough to catch a rename, which is what this file is for.
+DEFINED = {"r": r"^{name}\s*<-\s*function\b",
+           "julia": r"^function\s+{name}\s*\(|^{name}\s*\(.*\)\s*="}
+
 
 def _document():
     return json.loads(DESCRIPTOR.read_text(encoding="utf-8"))
@@ -68,6 +76,8 @@ class TestEveryDeclaredCallableStillExists(unittest.TestCase):
             run = row.get("run")
             if not run:
                 continue
+            if run.get("language"):
+                continue
             with self.subTest(row=f"{step}/{row['name']}"):
                 module, sep, function = run["callable"].partition(":")
                 self.assertTrue(sep, "a callable is 'module:function'")
@@ -81,6 +91,57 @@ class TestEveryDeclaredCallableStillExists(unittest.TestCase):
                         raise
                     self.skipTest(f"{module} needs the units extra: {exc}")
                 self.assertTrue(callable(found), f"{run['callable']} is not callable")
+
+
+class TestEveryTranslationStillExists(unittest.TestCase):
+    """The same rot, for a row whose function is not Python.
+
+    Such a row says its ``language``, and its callable is
+    ``<file under the package>:<function>``. Nothing here runs R or Julia --
+    ``test_translations.py`` does, where they are installed -- so what is
+    checked is what can be read: the file is there, beside the Python module of
+    the same name, the function is defined in it, and the block declares the
+    language.
+    """
+
+    def _translated(self):
+        return [(step, row) for step, row in _rows()
+                if (row.get("run") or {}).get("language")]
+
+    def test_there_are_translations_and_each_language_is_declared(self):
+        rows = self._translated()
+        self.assertGreater(len(rows), 0)
+        library = _document()["library"]
+        for step, row in rows:
+            language = row["run"]["language"]
+            with self.subTest(row=f"{step}/{row['name']}"):
+                self.assertIn(language, DEFINED)
+                self.assertTrue(library.get(language, {}).get("engine"),
+                                f"the library block declares no {language} "
+                                f"provider")
+
+    def test_each_translation_is_a_function_of_a_file_beside_the_python(self):
+        for step, row in self._translated():
+            run = row["run"]
+            with self.subTest(row=f"{step}/{row['name']}"):
+                path, sep, function = run["callable"].rpartition(":")
+                self.assertTrue(sep, "a callable is 'file:function'")
+                source = PACKAGE / path
+                self.assertTrue(source.is_file(), f"{source} is not there")
+                self.assertTrue(source.with_suffix(".py").is_file(),
+                                "a translation sits beside the Python it "
+                                "translates, under the same name")
+                pattern = DEFINED[run["language"]].format(
+                    name=re.escape(function))
+                self.assertRegex(source.read_text(encoding="utf-8"),
+                                 re.compile(pattern, re.MULTILINE))
+
+    def test_a_translation_twins_a_method_the_python_holds(self):
+        python = {(step, row["ours"]) for step, row in _rows()
+                  if row.get("run") and not row["run"].get("language")}
+        for step, row in self._translated():
+            with self.subTest(row=f"{step}/{row['name']}"):
+                self.assertIn((step, row["ours"]), python)
 
 
 class TestRunSpecsAreShaped(unittest.TestCase):

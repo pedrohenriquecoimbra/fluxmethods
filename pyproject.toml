@@ -54,3 +54,7 @@ include = ["fluxmethods*"]
 # for a path length raise. A wheel has to carry it.
 [tool.setuptools.package-data]
 "fluxmethods.spectral" = ["instruments/*.json", "instruments/*.md"]
+# A method's translation into R or Julia is a file beside its Python module,
+# read by whoever calls it in that language. Not a module, so it has to be
+# named to be shipped.
+"fluxmethods.axis_rotation" = ["*.R", "*.jl"]

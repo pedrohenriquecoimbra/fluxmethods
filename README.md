@@ -13,6 +13,10 @@ from fluxmethods.despiking.mauder_et_al_2013 import mauder2013
 Each module is named for the work it implements, so a citation and an import are
 the same string.
 
+The functions are Python. One of them is also here in R and in Julia, as a file
+of the same name beside the Python one, held to the same numbers:
+[one method, three languages](#one-method-three-languages).
+
 ## What this is, and what it is not
 
 These modules are the estimators of
@@ -62,6 +66,109 @@ Full references are in [`NOTICE`](NOTICE).
 `core`, the same tree as `oneflux_preproc`'s `corrections/<step>/` and `core/` —
 path for path and filename for filename. `diff -r` the two and every difference
 should be one you can name. They are all named below.
+
+## One method, three languages
+
+`double_rotation` is here three times:
+
+| file | language | call |
+|---|---|---|
+| `axis_rotation/wilczak_et_al_2001.py` | Python | `double_rotation(u, v, w)` → an object with `u`, `v`, `w`, `theta`, `phi` |
+| `axis_rotation/wilczak_et_al_2001.R` | R | `double_rotation(u, v, w)` → a list of the same names |
+| `axis_rotation/wilczak_et_al_2001.jl` | Julia | `double_rotation(u, v, w)` → a named tuple of the same names |
+
+**The Python file is the method. The other two are translations of it**, and
+that is all they are: statement for statement, the same operations in the same
+order, with the same handling of a missing value, so that the three give the
+same numbers and not merely close ones. A translation carries no idea of its
+own; where it and the Python disagree, the translation is wrong.
+
+They sit beside the file they translate, under its name, so the layout stays
+the equivalence map: a path names a method, and the extension names the
+language. Neither needs a package: base R, and Julia with its standard library.
+`source()` or `include()` the file and call the function.
+
+```r
+source("fluxmethods/axis_rotation/wilczak_et_al_2001.R")
+out <- double_rotation(u, v, w)
+```
+
+```julia
+include("fluxmethods/axis_rotation/wilczak_et_al_2001.jl")
+out = double_rotation(u, v, w)
+```
+
+### How they are kept equal
+
+An element-wise product or sum is the same in every language: IEEE 754 fixes
+it. Two things in a rotation are not fixed by the standard, and each
+translation deals with both the same way, by doing what the Python does.
+
+**The mean.** The angles are arctangents of means, and languages add a series
+up differently. `numpy.nanmean` sums pairwise in blocks of 128 with eight
+running sums; R's `mean` sums in extended precision and corrects with a second
+pass; Julia's `sum` is pairwise with other blocks. The three means differ in
+the last bit. So both translations carry `pairwise_sum`, numpy's summation
+written out in numpy's order, and it gives numpy's sum exactly
+(`tests/test_translations.py` checks the model on 300 lengths).
+
+**The arctangent, the cosine and the sine.** R's are the C library's. Julia's
+are its own, written in Julia, and differ from the C library's in the last bit
+for about one argument in ten (measured against glibc: `atan` 18 %, `cos` and
+`sin` 3 %), so the Julia file calls the C library's where there is one (Linux,
+macOS) and says in `LIBM` which it used. numpy's `cos` and `sin` are the C
+library's as well.
+
+**What is left, and it is on the Python side.** `numpy.arctan2` is not the C
+library's `atan2` on every machine: on a CPU with AVX-512 numpy computes it
+with a vector routine of its own, and the two differ in the last bit for a few
+arguments in a hundred (3–7 % measured, numpy 2.4.6, AMD Zen 5). Where they
+differ, the Python's angle is one unit in the last place from the
+translations', and the rotated wind follows it: about one part in 1e16 of the
+wind speed.
+
+So the claim is in three parts, and `tests/test_translations.py` holds each,
+skipping a language whose program is not installed:
+
+- R and Julia are **identical**, bit for bit;
+- each is **identical to the Python with `math.atan2` in place of
+  `numpy.arctan2`** — which shows the arctangent is the whole difference;
+- each is the Python as it stands **to twelve digits**, with a floor of
+  1e-12 m/s, because a rotation zeroes the mean of `v` and of `w` and next to
+  zero a relative tolerance says nothing.
+
+Making the third line read "identical" as well is a change to the Python —
+`math.atan2` for the two angles — and to the copy of it in the reference
+implementation, since the two are one code. It is not made here.
+
+*Identical* means the same value. A NaN where both `u` and `v` are missing can
+come back with the other sign bit in R; that is not a value.
+
+### In a pipeline
+
+`descriptor.json` declares each translation as a row of its own, beside the
+Python row it twins, with `"language": "r"` or `"julia"` in its `run` and the
+file as its callable (`axis_rotation/wilczak_et_al_2001.R:double_rotation`).
+The library block declares a provider per language, so a configuration of the
+reference implementation selects one by name:
+
+```
+method = double_rotation@fluxmethods          # the Python
+method = double_rotation@fluxmethods_r        # the R translation
+method = double_rotation@fluxmethods_julia    # the Julia translation
+```
+
+and a run is stamped with the file of the language that ran and its digest.
+`oneflux_preproc` runs its sample chain once with each and compares every
+output (`scripts/compare_languages.py` there).
+
+### Adding a translation
+
+One file beside the Python, same name, the language's extension; the function
+under the Python's name, taking arrays and returning its results by name; a row
+in `descriptor.json`; a case in `tests/test_translations.py`. Translate the
+statements, not the idea: a faster or more idiomatic version is a different
+method, and belongs somewhere it can say so.
 
 ## Coverage
 
@@ -204,6 +311,9 @@ pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.4
 
 Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`, `regorator`.
 
+The R and Julia files install with the package, as data beside the modules; to
+call one you need R (any 4.x; nothing but base R is used) or Julia (>= 1.9).
+
 Append `#egg=fluxmethods[units]` to that URL, or `pip install .[units]` from a
 checkout, to add `pint` for the two methods in `fluxmethods.units`.
 That package is reached lazily, so `import fluxmethods` costs no unit registry
@@ -227,7 +337,9 @@ python -m pytest tests/
 
 `unittest` only, and a smoke test rather than a physics one — the physics is
 checked against the reference implementation, on its side, where the data and
-the published comparisons are.
+the published comparisons are. `test_translations.py` runs the R and Julia
+files against the Python and skips each language whose program (`Rscript`,
+`julia`) is not on PATH.
 
 ## Licence
 
