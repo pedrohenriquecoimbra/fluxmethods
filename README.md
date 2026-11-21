@@ -315,7 +315,7 @@ A program that runs these methods pins this repository as a submodule and ships
 the tree it pinned. To call them yourself, install from the repository:
 
 ```
-pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.4
+pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.5
 ```
 
 Python >= 3.9. `numpy`, `pandas`, `scipy`, `xarray`, `regorator`.
