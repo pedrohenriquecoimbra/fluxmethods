@@ -295,7 +295,7 @@
       },
       {
         "name": "planarfit",
-        "description": "rotates into a plane fitted over many periods rather than per period",
+        "description": "rotates into a plane fitted over many periods rather than per period; needs that fitted plane, its coefficients b0, b1 and b2",
         "references": [],
         "ours": "planarfit",
         "no_scientific_reference": "a copy of this package's own estimator, published by fluxmethods",

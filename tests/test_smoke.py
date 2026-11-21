@@ -63,17 +63,27 @@ class TestRotation(unittest.TestCase):
         self.assertAlmostEqual(float(out.phi), 0.0, places=12)
 
     def test_a_planar_fit_takes_a_period_in_the_shape_it_is_handed(self):
-        """A caller hands one period over as (date, time); the fit is over its
-        samples, and the components come back in the shape they went in."""
-        from fluxmethods.axis_rotation.wilczak_et_al_2001 import planarfit
+        """A caller hands one period over as (date, time), with the plane fitted
+        beforehand, and the components come back in the shape they went in.
+
+        The plane is fitted here on the period's own samples, which is what a
+        run must not do (it is the momentum flux, not the tilt) and what
+        ``planarfit`` therefore refuses to do for itself: this checks the shape
+        and the zero mean, and a plane is a plane wherever it came from."""
+        from fluxmethods.axis_rotation.wilczak_et_al_2001 import findB, planarfit
 
         rng = np.random.default_rng(0)
         u = 2.0 + rng.normal(0, 0.5, 2000)
         v = rng.normal(0, 0.5, 2000)
         w = 0.1 + 0.05 * u + rng.normal(0, 0.2, 2000)
 
-        flat = planarfit(u, v, w)
-        period = planarfit(u[np.newaxis, :], v[np.newaxis, :], w[np.newaxis, :])
+        plane = dict(zip(("b0", "b1", "b2"),
+                         (float(b) for b in np.ravel(findB(u, v, w)))))
+        flat = planarfit(u, v, w, **plane)
+        period = planarfit(u[np.newaxis, :], v[np.newaxis, :], w[np.newaxis, :],
+                           **plane)
+        with self.assertRaises(ValueError):
+            planarfit(u, v, w)                   # no plane, no per-period fallback
         for name in ("u", "v", "w"):
             self.assertEqual(getattr(period, name).shape, (1, 2000))
             np.testing.assert_array_equal(getattr(period, name)[0],

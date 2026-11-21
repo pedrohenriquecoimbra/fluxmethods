@@ -67,6 +67,36 @@ def double_rotation(u, v, w, verbosity=0):
                  "meta": {}})
 
 
+#: EddyPro's limit on the third rotation, in degrees (``ThirdRotation``).
+EDDYPRO_ROLL_LIMIT_DEG = 10.0
+
+
+def _warn_where_eddypro_differs(psi, cross, spread):
+    """Log a warning when EddyPro's third rotation would not be this one.
+
+    EddyPro takes ``roll = 0.5*atan(cross/spread)`` and applies it only when
+    ``|roll| < 10 deg``; with ``spread == 0`` it does not rotate. Here
+    ``psi = 0.5*atan2(cross, spread)`` and is always applied. The two agree when
+    ``spread > 0`` and ``|psi| < 10 deg``, and only then.
+    """
+    psi_deg = float(np.degrees(psi))
+    if not np.isfinite(psi_deg) or abs(psi_deg) < EDDYPRO_ROLL_LIMIT_DEG:
+        return
+    if spread < 0:
+        roll = float(np.degrees(0.5 * np.arctan(cross / spread)))
+        eddypro = (f"<v'^2> < <w'^2>, so EddyPro's half atan (not atan2) gives "
+                   f"{roll:.2f} deg instead, which it would ")
+        eddypro += ("apply" if abs(roll) < EDDYPRO_ROLL_LIMIT_DEG else
+                    "not apply either, leaving the period double-rotated")
+    else:
+        eddypro = (f"EddyPro rotates a third time only when |psi| < "
+                   f"{EDDYPRO_ROLL_LIMIT_DEG:g} deg and would leave this period "
+                   f"double-rotated")
+    logger.warning(
+        "triple_rotation: third-rotation angle psi = %.2f deg, applied (Wilczak "
+        "et al. 2001 set no limit); %s.", psi_deg, eddypro)
+
+
 def triple_rotation(u, v, w, verbosity=0):
     r"""
     Perform a triple rotation correction on the input wind components u, v, w.
@@ -76,10 +106,15 @@ def triple_rotation(u, v, w, verbosity=0):
     The third-rotation angle follows Wilczak et al. (2001, eq. 3):
     tan(2*psi) = 2<v'w'> / (<v'^2> - <w'^2>), i.e. psi is HALF the arctangent --
     dropping the 1/2 doubles the angle. atan2 keeps the quadrant when the variance
-    difference is negative. EddyPro additionally *skips* the third rotation
-    when \|psi\| > 10 deg; that guard is EddyPro's own, not part of Wilczak et
-    al. (2001), so it is deliberately NOT transcribed here -- the cost of that
-    formulation difference is measured, per window class, by
+    difference is negative. EddyPro (7.0.9, ``ThirdRotation`` in
+    ``tilt_correction.f90``) differs in two ways: it rotates a third time only
+    when \|psi\| < 10 deg, and it takes the half *atan* of the ratio, not atan2,
+    so where <v'^2> < <w'^2> its angle is this one less 90 deg. Neither is in
+    Wilczak et al. (2001), so neither is transcribed here: the rotation is
+    applied whatever the angle. A period where EddyPro would have done otherwise
+    (\|psi\| >= 10 deg, which every period with <v'^2> < <w'^2> is) is logged as a
+    warning that says what EddyPro would have done. The cost of the guard is
+    measured, per window class, by onefluxpro's
     ``tests/test_eddypro_variants.py`` (``ep_rot_triple_guarded``).
 
     Parameters:
@@ -96,8 +131,10 @@ def triple_rotation(u, v, w, verbosity=0):
     u2, v2, w2, theta, phi = dr.u, dr.v, dr.w, dr.theta, dr.phi
 
     #third rotation: psi = 0.5 * atan2(2<v'w'>, <v'^2> - <w'^2>) (Wilczak 2001)
-    psi = 0.5 * np.arctan2(2 * np.nanmean(v2 * w2),
-                           np.nanmean(v2**2) - np.nanmean(w2**2))
+    cross = 2 * np.nanmean(v2 * w2)
+    spread = np.nanmean(v2**2) - np.nanmean(w2**2)
+    psi = 0.5 * np.arctan2(cross, spread)
+    _warn_where_eddypro_differs(psi, cross, spread)
     u3 = u2
     v3 = v2 * np.cos(psi) + w2 * np.sin(psi)
     w3 = -v2 * np.sin(psi) + w2 * np.cos(psi)
@@ -125,14 +162,23 @@ def findB(u, v, w):
     scalar means: with the means, every row is a multiple of ``[1, u, v]`` and
     the matrix is rank-1 (exactly singular).
 
-    Module-level (rather than nested in :func:`planarfit`) so the fit itself can
-    be validated in isolation: EddyPro's planar fit applies this same plane fit
-    to a *population* of window-mean winds per wind sector, while
-    :func:`planarfit` applies it to the samples of a single window, and the
-    ground-truth tests need to score the two formulations separately.
+    This is how the plane :func:`planarfit` takes is obtained: Wilczak et al.
+    (2001, sect. 3) fit it to a *population* of window-mean winds (``ū_j, v̄_j,
+    w̄_j`` over many runs), as EddyPro does per wind sector, and then apply that
+    one plane to every window. Handed one window's samples instead, the slope of
+    w on u is about ``cov(u', w') / var(u')``, so the "plane" is the momentum
+    flux itself and rotating into it removes most of ``u'w'``.
+
+    Fewer than three finite points, or points that do not span a plane (all on
+    one line), leave the plane undetermined: the answer is NaN for all three
+    coefficients rather than a ``LinAlgError``, the same way a rotation of a
+    period with no finite wind is NaN.
     """
+    u, v, w = (np.asarray(a, dtype=float).ravel() for a in (u, v, w))
     mask = np.isfinite(u) & np.isfinite(v) & np.isfinite(w)
     u, v, w = u[mask], v[mask], w[mask]
+    if u.size < 3:
+        return np.nan, np.nan, np.nan
     n = float(u.size)
     su, sv, sw = float(u.sum()), float(v.sum()), float(w.sum())
     suv, suw, svw = float((u * v).sum()), float((u * w).sum()), float((v * w).sum())
@@ -140,7 +186,10 @@ def findB(u, v, w):
 
     H = np.matrix([[n, su, sv], [su, su2, suv], [sv, suv, sv2]])
     g = np.matrix([sw, suw, svw]).T
-    x = sp.linalg.solve(H, g)
+    try:
+        x = sp.linalg.solve(H, g)
+    except np.linalg.LinAlgError:
+        return np.nan, np.nan, np.nan
     return x[0, 0], x[1, 0], x[2, 0]
 
 
@@ -153,15 +202,21 @@ def planarfit(u, v, w, verbosity=0, b0=None, b1=None, b2=None):
         v (array-like): The v component of the wind.
         w (array-like): The w component of the wind.
         verbosity (int): Level of verbosity for debug output.
-        b0, b1, b2 (float, optional): Precomputed coefficients of the plane
-            ``w = b0 + b1*u + b2*v``. Wilczak et al. (2001) define the plane
-            over a long-term population of window-mean winds, then rotate every
-            window with that one plane; only the final alignment of u with the
-            window's mean wind stays per-window. Passing the coefficients (all
-            three, e.g. from :func:`findB` on the population, carried by the
-            config block like a lag table) applies those semantics; leaving
-            them out fits the plane on this window's own samples (unchanged
-            per-window behaviour).
+        b0, b1, b2 (float): Coefficients of the plane ``w = b0 + b1*u + b2*v``,
+            all three, required. Wilczak et al. (2001, sect. 3) fit the plane by
+            least squares over a long-term population of window-mean winds and
+            rotate every window with that one plane; only the final alignment of
+            u with the window's mean wind stays per window. Obtain them with
+            :func:`findB` on the window means of a long unrotated record and
+            carry them in the step's config block (``[[axis_rotation]] b0 = ..``).
+            One plane for every wind direction: per-sector planes (EddyPro's
+            sector fit, GEddySoft's tilt file) are not read here.
+
+    Raises:
+        ValueError: when the plane is missing, partial or not finite. There is
+            no per-window fallback: fitting the plane on one window's own
+            samples makes w uncorrelated with u by construction and strips most
+            of the momentum flux (about 75-90 % on synthetic and FR-Gri data).
 
     Returns:
         tuple: Corrected u, v, w components after planar fit correction.
@@ -179,14 +234,20 @@ def planarfit(u, v, w, verbosity=0, b0=None, b1=None, b2=None):
     meanW = np.nanmean(w)
 
     given = [c is not None for c in (b0, b1, b2)]
-    if all(given):
-        b0, b1, b2 = float(b0), float(b1), float(b2)
-    elif any(given):
+    if not all(given):
         raise ValueError(
-            "planarfit takes either all of b0, b1, b2 (a precomputed plane) "
-            "or none of them (fit on this window's samples)")
-    else:
-        b0, b1, b2 = findB(u, v, w)
+            "planarfit needs the plane w = b0 + b1*u + b2*v, all three of b0, b1, "
+            f"b2 (got {'only some' if any(given) else 'none'} of them). Wilczak et "
+            "al. (2001) fit it once over a population of window-mean winds -- "
+            "findB on the window means of a long unrotated record -- and apply "
+            "it to every window; set b0, b1, b2 in [Corrections][[axis_rotation]]. "
+            "Refusing rather than fitting the plane on this window's own samples, "
+            "which removes most of the momentum flux.")
+    b0, b1, b2 = float(b0), float(b1), float(b2)
+    if not np.all(np.isfinite([b0, b1, b2])):
+        raise ValueError(
+            f"planarfit: the plane (b0={b0}, b1={b1}, b2={b2}) is not finite; a "
+            "population too small to fit (findB returns NaN) gives no plane.")
 
     Deno = np.sqrt(1 + b1 ** 2 + b2 ** 2)
     p31 = -b1 / Deno

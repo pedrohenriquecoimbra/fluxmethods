@@ -39,12 +39,6 @@ def _ensure_scalar(value):
     return float(arr[0]) if arr.size else 0.0
 
 
-def _acq_freq(move):
-    """Acquisition frequency [Hz] from the ``time`` coordinate spacing."""
-    dt = np.abs(float(move['time'].diff('time').mean().to_numpy()))
-    return 1.0 / dt if np.isfinite(dt) and dt > 0 else np.nan
-
-
 def lag_series(da, shift_samples):
     """Shift ``da`` along ``time`` by an integer number of samples.
 
@@ -243,8 +237,13 @@ def _inner_window(tlag, tlag_min, tlag_max, half_default=100):
     return float(tlag) - half_default, float(tlag) + half_default
 
 
-def return_time_lag(move, opt_samples, opt_use_samples=None):
+def return_time_lag(move, opt_samples, opt_use_samples=None, acq_freq=None):
     """Apply the integer-sample shift and record the lag it applied, in parts.
+
+    ``acq_freq`` is the rate the shift was computed at; a caller that converted
+    the window with an explicit rate passes it here, so the peak is reported in
+    seconds at that same rate rather than at the one the ``time`` coordinate
+    implies. Unset, the coordinate's rate is read (:func:`.commons.acq_freq`).
 
     Three values, all in seconds and positive when the scalar lags the wind:
 
@@ -269,7 +268,7 @@ def return_time_lag(move, opt_samples, opt_use_samples=None):
                        if opt_use_samples is not None else opt_samples)
     moved = lag_series(move, opt_use_samples).to_dataset()
 
-    freq = _acq_freq(move)
+    freq = _acq_freq_of(move, acq_freq)
     # A series the clock-drift step realigned was searched with the clock error
     # already taken out, so the peak it found is the *physical* lag -- the tube
     # transit time, which is the quantity the configuration declares
@@ -338,13 +337,14 @@ def time_lag(move, fix, tlag=0, tlag_min=None, tlag_max=None, outer=None,
     optionally Hamming-smooths the covariance before the peak search; ``outer``
     (samples) widens the covariance-evaluation extent for that smoothing.
     """
+    freq = _acq_freq_of(move, acq_freq)
     tlag, tlag_min, tlag_max = _window_in_samples(
-        move, tlag, tlag_min, tlag_max, acq_freq, lag_units)
+        move, tlag, tlag_min, tlag_max, freq, lag_units)
     lo, hi = _inner_window(tlag, tlag_min, tlag_max)
     ext = _ext_window(tlag, lo, hi, outer, covpeak_filter_length)
     peak = _scan_peak(fix, move, lo, hi, covpeak_filter_length, ext,
                       kernel=xcov_kernel(xcov))
-    return return_time_lag(move, peak)
+    return return_time_lag(move, peak, acq_freq=freq)
 
 
 def time_lag_w_default(move, fix, tlag=0, tlag_min=None, tlag_max=None, outer=None,
@@ -381,12 +381,13 @@ def time_lag_w_default(move, fix, tlag=0, tlag_min=None, tlag_max=None, outer=No
     ``covpeak_filter_length`` / ``outer`` control the optional Hamming smoothing
     of the covariance (see :func:`time_lag`).
     """
+    freq = _acq_freq_of(move, acq_freq)
     tlag, tlag_min, tlag_max = _window_in_samples(
-        move, tlag, tlag_min, tlag_max, acq_freq, lag_units)
+        move, tlag, tlag_min, tlag_max, freq, lag_units)
     lo, hi = _inner_window(tlag, tlag_min, tlag_max)
     ext = _ext_window(tlag, lo, hi, outer, covpeak_filter_length)
     peak = _scan_peak(fix, move, lo, hi, covpeak_filter_length, ext,
                       kernel=xcov_kernel(xcov))
     on_boundary = (peak <= lo) or (peak >= hi)
     opt_use = int(round(float(tlag))) if on_boundary else peak
-    return return_time_lag(move, peak, opt_use)
+    return return_time_lag(move, peak, opt_use, acq_freq=freq)

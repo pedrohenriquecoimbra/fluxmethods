@@ -5,9 +5,10 @@ supports three table-driven refinements of the time lag beyond covariance
 maximisation:
 
 * **PRESCRIBED** — a per-half-hour lag read from a file; when the running
-  half-hour is missing, the median of the 10 nearest non-NaN lags is used.
-  The tabulated value is the *total* lag (physical + clock drift) and is used
-  as-is — see :func:`prescribed_time_lag`.
+  half-hour is missing, the median of the 10 nearest non-NaN lags is used --
+  taken on the *physical* part (tabulated + TDC) when a clock-drift table is
+  given, as GEddySoft's tracer branch does. The tabulated value is the *total*
+  lag (physical + clock drift) — see :func:`prescribed_time_lag`.
 * **clock drift** — a time-dependent offset (``TDC - computer``) compensating
   acquisition-clock drift. It belongs to the *nominal* lag centre used by the
   CONST/MAX methods; it is already contained in the PRESCRIBED table, so it is
@@ -33,6 +34,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from .commons import acq_freq as _acq_freq
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,7 +56,12 @@ def load_prescribed_lag_table(path, value_col=None):
     index = pd.to_datetime(df[time_col], dayfirst=True, errors='coerce')
     series = pd.Series(pd.to_numeric(df[value_col], errors='coerce').values,
                        index=index, name=value_col)
-    return series[series.index.notna()].dropna().sort_index()
+    series = series[series.index.notna()]
+    # A stamp listed twice keeps its first row, as GEddySoft's reader does
+    # (``read_metadata_files``: duplicates dropped, then the NaNs). Left in, the
+    # exact lookup gets two rows back and the fallback counts the stamp twice.
+    series = series[~series.index.duplicated()]
+    return series.dropna().sort_index()
 
 
 def load_clock_drift_table(path):
@@ -68,7 +76,8 @@ def load_clock_drift_table(path):
     index = pd.to_datetime(df[time_col], dayfirst=True, errors='coerce')
     series = pd.Series(pd.to_numeric(df[value_col], errors='coerce').values,
                        index=index, name='clock_drift')
-    return series[series.index.notna()].sort_index()
+    series = series[series.index.notna()]
+    return series[~series.index.duplicated()].sort_index()
 
 
 def load_rh_dependency_table(path):
@@ -115,29 +124,59 @@ def _tracer_mz(name):
     return float(match.group(1)) if match else None
 
 
-def resolve_prescribed_lag(date, table, n_nearest=10):
-    """Return the prescribed lag (seconds) for ``date``.
+def resolve_prescribed_lag(date, table, n_nearest=10, clock_drift=None,
+                           drift_now=None):
+    """Return the prescribed (total) lag in seconds for ``date``.
 
     Uses the exact half-hour if present and non-NaN; otherwise the median of the
     ``n_nearest`` closest non-NaN entries in time (GEddySoft's fallback).
+
+    A tabulated lag is physical + clock drift, and the drift differs from one
+    half-hour to the next, so with a clock-drift table (``clock_drift``, a
+    :func:`load_clock_drift_table` series) the median is taken on the physical
+    part, ``tabulated_i + TDC_i``, and this window's drift is put back:
+    ``median(tabulated_i + TDC_i) - TDC_now``. That is GEddySoft v4.1's tracer
+    rule (``GEddySoft_main``, the PRESCRIBED branch; ``prescribed_lag_samples``
+    in patch 0010), with each tabulated stamp paired to its nearest TDC row as
+    upstream does. ``TDC_now`` is ``drift_now`` when given -- the drift the
+    clock-drift step took off this window -- else the TDC row nearest ``date``.
+    Upstream reads it at the tabulated stamp nearest the gap instead, and picks
+    neighbours by position rather than by time. Without a drift table the
+    median is of the tabulated totals (upstream's IRGA branch).
     """
     date = pd.Timestamp(date)
     valid = table.dropna()
+    valid = valid[~valid.index.duplicated()]
     if valid.empty:
         return np.nan
     if date in valid.index:
         return float(valid.loc[date])
     deltas = np.abs(valid.index - date)
     nearest = valid.iloc[np.argsort(deltas.values)[:n_nearest]]
-    return float(np.median(nearest.values))
+    drift = None if clock_drift is None else clock_drift.dropna()
+    drift = None if drift is None else drift[~drift.index.duplicated()].sort_index()
+    if drift is None or drift.empty:
+        return float(np.median(nearest.values))
+    paired = drift.reindex(nearest.index, method='nearest')
+    if drift_now is None or not np.isfinite(float(drift_now)):
+        drift_now = float(drift.iloc[int(np.argmin(np.abs(drift.index - date)))])
+    return float(np.median(nearest.values + paired.values) - float(drift_now))
 
 
 def resolve_rh_lag(rh, mz, table, tol=0.001):
     """Return the RH-dependent lag (samples) for humidity ``rh`` and ``mz``.
 
     The nearest RH row is used; the ``m/z`` column is matched within ``tol``.
-    Returns NaN when no column matches.
+    Returns NaN when no column matches, and when ``rh`` is not finite (no
+    humidity for the period): a NaN distance would otherwise pick the table's
+    first row, whatever humidity that row is for.
     """
+    try:
+        rh = float(rh)
+    except (TypeError, ValueError):
+        return np.nan
+    if not np.isfinite(rh):
+        return np.nan
     rh = float(np.clip(rh, table.index.min(), table.index.max()))
     columns = np.array([c for c in table.columns if isinstance(c, (int, float))],
                        dtype=float)
@@ -150,14 +189,9 @@ def resolve_rh_lag(rh, mz, table, tol=0.001):
     return float(table.iloc[row_idx][columns[j]])
 
 
-def _acq_freq(move, acq_freq=None):
-    if acq_freq:
-        return float(acq_freq)
-    return float(1.0 / np.abs(move.time.diff('time').mean().to_numpy()))
-
-
 def prescribed_time_lag(move, fix=None, lag_table=None, date=None,
-                        tlag=0, acq_freq=None, lag_samples=None, **kwargs):
+                        tlag=0, acq_freq=None, lag_samples=None,
+                        clock_drift_table=None, **kwargs):
     """Shift ``move`` by a prescribed (table-driven) lag; return an ``xr.Dataset``.
 
     ``lag_table`` is a :func:`load_prescribed_lag_table` series (seconds).
@@ -177,6 +211,13 @@ def prescribed_time_lag(move, fix=None, lag_table=None, date=None,
     must NOT be added again. Doing so double-corrects the lag — the error
     GEddySoft itself fixed in v4.1 ("input files containing physical +
     clock-drift lag no longer receive additional clock-drift correction").
+
+    For a half-hour the table lacks, ``clock_drift_table`` (the run's TDC table,
+    which ``time_lag``'s apply loads from ``Files.lag_clock_drift_filepath``)
+    lets the fallback median be taken on the physical lag, as GEddySoft's tracer
+    branch does (see :func:`resolve_prescribed_lag`); the shift applied to a
+    drift-corrected series is then that physical median, whatever this window's
+    drift is.
 
     ``lag_samples(table, date, freq)`` is the table rule itself -- the exact
     half-hour, or the fallback when it is absent -- answering in samples. The
@@ -224,7 +265,9 @@ def prescribed_time_lag(move, fix=None, lag_table=None, date=None,
         else:
             samples = int(round(tabulated + drift * freq))
     elif lag_table is not None and date is not None and covers:
-        lag_seconds = resolve_prescribed_lag(date, lag_table)
+        lag_seconds = resolve_prescribed_lag(
+            date, lag_table, clock_drift=clock_drift_table,
+            drift_now=drift if drift else None)
         if np.isnan(lag_seconds):
             logger.warning("No prescribed lag resolved for %s; using default.", date)
             samples = _fallback_shift()

@@ -186,6 +186,16 @@ def spike_detection_vickers97(data: np.ndarray,
     differs from both the original VM97 paper (1 sample) and the EddyPro
     manual recommendation [2]_ (half window size).
 
+    A missing sample is neither an outlier nor an in-band value: it neither
+    extends nor closes a run of outliers, it is never flagged, and it is never
+    filled. VM97 define a spike by the consecutive *measured* points outside
+    the limits, so the run is the list of those points rather than a count
+    ending at the sample that closes it; a count would land on the missing
+    samples of a gap that follows the outlier, leave the outlier in place and
+    fill the gap from it. (EddyPro instead lengthens the run by every missing
+    sample after an outlier, its "error-run extension", which this
+    transcription does not follow.)
+
     See Also
     --------
     linear_interpolate_spikes : Function used to replace detected spikes
@@ -251,7 +261,7 @@ def spike_detection_vickers97(data: np.ndarray,
         passes += 1
         nspikes = 0
         nspikes_sng = 0
-        cnt = 0  # Counter for consecutive outliers
+        run = []  # indices of the consecutive outliers in the current run
 
         # Process each window
         for wdw in range(wdw_num):
@@ -283,6 +293,9 @@ def spike_detection_vickers97(data: np.ndarray,
         # Spike detection with consecutive outlier checking
         i = 0
         while i < N:
+            # A missing sample is skipped: it is not an outlier, so it does not
+            # lengthen the run, and not a measured in-band value, so it does not
+            # close it. Marking ``range(i - cnt, i)`` instead marked the gap.
             if _is_error(working[i], error_value):
                 i += 1
                 continue
@@ -292,18 +305,18 @@ def spike_detection_vickers97(data: np.ndarray,
 
             # Check if point is an outlier
             if working[i] > upper_limit or working[i] < lower_limit:
-                cnt += 1
+                run.append(i)
                 i += 1
             else:
                 # Found a valid point, check the previous sequence
-                if cnt > 0 and cnt <= max_consec_spikes:
-                    # Mark the previous cnt points as spikes
-                    for k in range(i-cnt, i):
+                if 0 < len(run) <= max_consec_spikes:
+                    # Mark the outliers of the run as spikes
+                    for k in run:
                         if not is_spike[k]:
                             nspikes += 1
                             nspikes_sng += 1
                             is_spike[k] = True
-                cnt = 0  # Reset counter
+                run = []  # Reset the run
                 i += 1
 
         # Replace spikes using linear interpolation. The original series is

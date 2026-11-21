@@ -16,7 +16,9 @@ convention:
 * a *positive physical lag* becomes a *negative shift*, since realigning a delayed
   scalar means moving it back in time (``move.shift(time=-n)``);
 * the conversion needs the acquisition frequency, which is read from the series'
-  own ``time`` coordinate unless supplied.
+  own ``time`` coordinate unless supplied -- from its regular steps, so a gap in
+  the records does not lower it, by the one helper :func:`acq_freq` every
+  method uses.
 """
 
 import logging
@@ -27,14 +29,51 @@ logger = logging.getLogger(__name__)
 
 
 def acq_freq(move, acq_freq=None):
-    """Acquisition frequency [Hz] from an explicit value or the ``time`` coordinate."""
+    """Acquisition frequency [Hz] from an explicit value or the ``time`` coordinate.
+
+    The spacing of the coordinate's *regular* steps -- those within half the
+    median step -- not the mean of all of them: records missing from the time
+    axis (an outage of a few minutes) widen the mean spacing and lower the rate,
+    so a configured lag in seconds would become too few samples and a found
+    peak would be reported as too many seconds. NaN when no rate can be read.
+
+    The methods shift by sample index, which assumes a regular grid; when the
+    coordinate has gaps the shift reaches across them, and that is said in a
+    warning rather than passed over.
+    """
     if acq_freq:
         return float(acq_freq)
     try:
-        dt = np.abs(float(move['time'].diff('time').mean().to_numpy()))
-    except (KeyError, ValueError, TypeError):
+        time = np.asarray(move['time'].values).ravel()
+    except (KeyError, ValueError, TypeError, AttributeError):
         return np.nan
-    return 1.0 / dt if np.isfinite(dt) and dt > 0 else np.nan
+    if time.size < 2:
+        return np.nan
+    try:
+        if time.dtype.kind in 'mM':
+            dt = np.abs(np.diff(time) / np.timedelta64(1, 's')).astype(float)
+        else:
+            dt = np.abs(np.diff(time.astype(float)))
+    except (ValueError, TypeError):
+        return np.nan
+    dt = dt[np.isfinite(dt)]
+    if not dt.size:
+        return np.nan
+    typical = float(np.median(dt))
+    if not (np.isfinite(typical) and typical > 0):
+        return np.nan
+    # The mean over the regular steps only: on a gap-free grid this is the plain
+    # mean spacing, to the last bit, and a gap no longer drags it.
+    regular = np.abs(dt - typical) <= 0.5 * typical
+    step = float(np.mean(dt[regular]))
+    gaps = int(np.sum(~regular))
+    if gaps:
+        logger.warning(
+            "%s: the time coordinate is not a regular grid (%d irregular steps); "
+            "the rate is taken from the median spacing (%g Hz), and the lag shift, "
+            "which is by sample index, reaches across the gaps.",
+            getattr(move, 'name', None) or 'time_lag', gaps, 1.0 / step)
+    return 1.0 / step
 
 
 def seconds_to_shift(seconds, freq, lag_units='seconds'):
