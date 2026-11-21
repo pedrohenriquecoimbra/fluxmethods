@@ -23,7 +23,15 @@ effects on an object this package does not own:**
    the two trees could never show. ``pint_xarray.setup_registry`` happens to set
    it too; it is set explicitly here so the semantics do not rest on that.
 
-Everything below this block is that module, unchanged.
+**A host that keeps a registry of its own names it** (:func:`adopt`). The
+application registry is whatever the process has installed *at the moment of a
+call*, and a program that installs its own only for the length of a run would
+otherwise have these methods compute on pint's default registry everywhere else
+-- where ``ppt`` is a volume. A named registry is the one the methods compute on
+from then on, whichever is the application's; naming none leaves the behaviour
+above.
+
+Everything below the registry is that module, unchanged.
 """
 
 import logging
@@ -34,7 +42,59 @@ import xarray as xr
 
 logger = logging.getLogger(__name__)
 
-ureg = pint.get_application_registry()
+class _Registry:
+    """The registry the methods compute on: the application's, or a named one.
+
+    Everything is forwarded to the registry in force when it is asked, so a
+    module that imported :data:`ureg` once follows a later :func:`adopt` -- and,
+    with nothing adopted, a later ``pint.set_application_registry``.
+    """
+
+    __slots__ = ("_named",)
+
+    def __init__(self):
+        object.__setattr__(self, "_named", None)
+
+    def get(self):
+        """The registry itself, which is what a quantity has to be made on."""
+        named = object.__getattribute__(self, "_named")
+        return named if named is not None else pint.get_application_registry().get()
+
+    def __getattr__(self, name):
+        return getattr(self.get(), name)
+
+    def __setattr__(self, name, value):
+        setattr(self.get(), name, value)
+
+    def __dir__(self):
+        return dir(self.get())
+
+    def __call__(self, *args, **kwargs):
+        return self.get()(*args, **kwargs)
+
+    def __contains__(self, item):
+        return item in self.get()
+
+    def __iter__(self):
+        return iter(self.get())
+
+
+ureg = _Registry()
+
+
+def adopt(registry):
+    """Name the registry these methods compute on; return the one named before.
+
+    For a host that keeps a registry of its own and does not make it the
+    application's for good. ``None`` goes back to following the application
+    registry. The vocabulary below was checked on the registry in force when
+    this module was imported, so a host names the registry it imported under.
+    """
+    previous = object.__getattribute__(ureg, "_named")
+    if isinstance(registry, (_Registry, pint.ApplicationRegistry)):
+        registry = registry.get()
+    object.__setattr__(ureg, "_named", registry)
+    return previous
 
 # See (2) above: the copied code's semantics depend on this, so it is declared
 # rather than inherited from whatever else has touched the registry.
@@ -113,6 +173,16 @@ try:                                          # the .pint accessor, where availa
 except Exception:                             # pragma: no cover - optional
     pint_xarray = None
 
+def quantify(obj, units=None, **unit_kwargs):
+    """``obj.pint.quantify(...)`` on :data:`ureg`, whatever the application uses.
+
+    The accessor's own default is the application registry, which is not the one
+    in force once a host has named another (:func:`adopt`).
+    """
+    args = () if units is None else (units,)
+    return obj.pint.quantify(*args, unit_registry=ureg.get(), **unit_kwargs)
+
+
 # Define aliases (case-insensitive mapping)
 UNIT_ALIASES = {
     'ppt': '1e-3',
@@ -172,8 +242,28 @@ def convert_unit(da, to_units):
     da_converted.attrs['unit_in'] = str(converted_q.units)
     return da_converted
 
+def _is_angle(q):
+    """Whether ``q`` is an angle (degree, radian, ...).
+
+    pint counts an angle as dimensionless, so it converts to ``dimensionless``
+    without complaint -- a degree becoming its value in radians under a label that
+    no longer says angle. Its root units still name the radian, which is what tells
+    it from a ratio.
+    """
+    try:
+        return any(name in ('radian', 'steradian')
+                   for name, _ in ureg.Quantity(1, q.units).to_root_units().unit_items())
+    except Exception:  # noqa: BLE001 - not a quantity: not an angle either
+        return False
+
+
 def convert_to_prefered_units(ds, units=[
     "m", "s", "μmol/m²/s", "m/s", "W/m²", "g/m²/s", "kg/m^3", "m^3/mol", "J/kg/K", "dimensionless"]):
+    """Each variable in the first of ``units`` it converts to; the rest as they are.
+
+    An angle is left as it is: it would otherwise reach ``dimensionless`` and be
+    published in radians with nothing saying so (``wind_dir`` in particular).
+    """
     array_input = False
     if not isinstance(ds, (xr.Dataset, xr.DataArray)):
         raise ValueError("Input must be an xarray Dataset or DataArray")
@@ -181,6 +271,8 @@ def convert_to_prefered_units(ds, units=[
         ds = ds.to_dataset(name='data')
         array_input = True
     for var in ds.data_vars:
+        if _is_angle(ds[var].data):
+            continue
         for target_unit in units:
             try:
                 # Try to convert

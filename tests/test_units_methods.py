@@ -107,7 +107,7 @@ class TestTheUnitsLayerIsAdoptedNotSeized(unittest.TestCase):
         import pint
 
         from fluxmethods.core import units
-        self.assertIs(units.ureg, pint.get_application_registry())
+        self.assertIs(units.ureg.get(), pint.get_application_registry().get())
 
     def test_scalar_magnitudes_are_array_like_as_the_copied_code_expects(self):
         """The registry is adopted but modified, and this is the modification
@@ -172,12 +172,55 @@ class TestTheUnitsLayerIsAdoptedNotSeized(unittest.TestCase):
         probe = (
             "import pint; app = pint.get_application_registry(); q = app('1 m');"
             "import fluxmethods.core.units as u;"
-            "print(int(u.ureg is app), (q + u.ureg('2 m')).magnitude)")
+            "print(int(u.ureg.get() is app.get()), (q + u.ureg('2 m')).magnitude)")
         out = subprocess.run([sys.executable, "-c", probe], capture_output=True,
                              text=True,
                              cwd=str(pathlib.Path(__file__).parent.parent))
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(out.stdout.split()[0], "1")
+
+    def test_a_later_application_registry_is_followed_while_none_is_named(self):
+        """Nothing adopted: the registry is whichever the application uses when
+        it is asked, not the one in place at import."""
+        import pint
+
+        from fluxmethods.core import units
+        before = pint.get_application_registry().get()
+        other = pint.UnitRegistry(force_ndarray_like=True)
+        pint.set_application_registry(other)
+        try:
+            self.assertIs(units.ureg.get(), other)
+        finally:
+            pint.set_application_registry(before)
+        self.assertIs(units.ureg.get(), before)
+
+    def test_a_host_names_the_registry_the_methods_compute_on(self):
+        """A program that installs its registry only for the length of a run
+        names it, and the methods compute on it whatever the application's is:
+        a quantity it made operates with one made here, and ``quantify`` reads a
+        ``units`` attribute on it rather than on pint's default, where ``ppt``
+        is a volume."""
+        import pint
+        import xarray as xr
+
+        from fluxmethods.core import units
+        host = pint.UnitRegistry(force_ndarray_like=True)
+        host.define('ppt = 1e-3 = parts_per_thousand')
+        application = pint.get_application_registry().get()
+        previous = units.adopt(host)
+        try:
+            self.assertIs(units.ureg.get(), host)
+            self.assertIsNot(units.ureg.get(), application)
+            total = host.Quantity(1.0, "m") + units.ureg("2 m")
+            self.assertAlmostEqual(float(total.magnitude), 3.0)
+            da = xr.DataArray([1.0, 2.0], dims="time", attrs={"units": "ppt"})
+            quantified = units.quantify(da)
+            self.assertIs(quantified.pint.units._REGISTRY, host)
+            self.assertEqual(quantified.pint.units.dimensionality,
+                             host("dimensionless").dimensionality)
+        finally:
+            units.adopt(previous)
+        self.assertIs(units.ureg.get(), application)
 
 
 if __name__ == "__main__":

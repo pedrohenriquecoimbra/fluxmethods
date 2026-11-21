@@ -66,6 +66,7 @@ import xarray as xr
 from ..core import constants, provenance
 from ..core.measure_type import measure_type_of
 from ..core.micrometeorology import add_gas_mass_densities
+from ..core.units import quantify
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +108,7 @@ def _qty(ds, name):
     what it needs and hands the result back in whatever state it found.
     """
     da = ds[name]
-    return da if _is_quantified(da) else da.pint.quantify()
+    return da if _is_quantified(da) else quantify(da)
 
 
 def _instrument(ds, name):

@@ -290,6 +290,8 @@ def references_for(kind, method):
     ``no_scientific_reference``. :func:`unreferenced_reason` reads that.
     """
     key = (str(kind), str(method))
+    if citations is not None:
+        return list(_lookup(*key)[0])
     if key not in _REFERENCE_CACHE:
         _REFERENCE_CACHE[key] = _lookup(*key)
     return list(_REFERENCE_CACHE[key][0])
@@ -298,13 +300,29 @@ def references_for(kind, method):
 def unreferenced_reason(kind, method):
     """Why a method carries no citation, or ``None`` if it carries one."""
     key = (str(kind), str(method))
+    if citations is not None:
+        return _lookup(*key)[1]
     if key not in _REFERENCE_CACHE:
         _REFERENCE_CACHE[key] = _lookup(*key)
     return _REFERENCE_CACHE[key][1]
 
 
+#: ``(kind, method) -> (references, no_scientific_reference)``, where a host keeps
+#: a catalogue of what each method cites. A collection keeps none: its methods
+#: are functions, and nothing here registers them under a name. A program that
+#: runs them under its own names answers for those names by rebinding this, and
+#: a record written from here then cites what that program's own records cite.
+citations = None
+
+
 def _lookup(kind, method):
     """``(references, no_scientific_reference)`` for one registered method."""
+    if citations is not None:
+        try:
+            references, reason = citations(kind, method)
+            return (list(references or []), reason)
+        except Exception:  # noqa: BLE001 - provenance must never break a run
+            return ([], None)
     try:
         from ..catalogue import catalogue, resolve_method
     except Exception:  # noqa: BLE001 - provenance must never break a run
