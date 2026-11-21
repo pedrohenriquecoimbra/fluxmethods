@@ -1,9 +1,11 @@
-"""The shared layers the methods rest on, copied from ``oneflux_preproc/core``.
+"""The shared layers the methods rest on, as ``onefluxpro/core`` holds them.
 
 Not methods: units and their registry, constants, how a scalar was measured, the
 moist-air thermodynamics, the run record, and two small numeric helpers. They
-mirror that package's ``core/`` path for path -- with one deliberate exception,
-in :mod:`.units`, which says so at the top of the file.
+mirror that package's ``core/`` path for path, and are kept here as well because
+a collection has to stand without a program around it. Where a program does run
+these methods, it names its registry to :mod:`.units`, sets its constants in
+:mod:`.constants` and answers :mod:`.provenance` for what a method cites.
 
 ``units``, ``constants``, ``measure_type`` and ``micrometeorology`` are reached
 lazily, because the first of them imports pint and the other three rest on it.

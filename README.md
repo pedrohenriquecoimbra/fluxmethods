@@ -20,12 +20,10 @@ of the same name beside the Python one, held to the same numbers:
 ## What this is, and what it is not
 
 These modules are the estimators of
-[`oneflux_preproc`](https://github.com/pedrohenriquecoimbra/ONEFlux-preproc),
-lifted out of it **unchanged**. They are not a reimplementation and not a
-rewrite: the file here and the file there are the same code, and
-`oneflux_preproc` checks that on every release by running the two against each
-other and requiring them equal to twelve digits. If they ever disagree, one of
-them has drifted and the test says which.
+[`onefluxpro`](https://github.com/pedrohenriquecoimbra/ONEFluxPro), lifted out
+of it, and **that package keeps no copy**: it registers these functions and runs
+these files. A method is one file, and the file is here. They are not a
+reimplementation and not a rewrite.
 
 That is the whole difference from the same author's
 [`miniflux`](https://github.com/pedrohenriquecoimbra/miniflux), which is a
@@ -33,7 +31,7 @@ That is the whole difference from the same author's
 
 | | question it answers |
 |---|---|
-| `oneflux_preproc` | give me the whole processing chain, with provenance and the engine comparisons |
+| `onefluxpro` | give me the whole processing chain, with provenance and the engine comparisons |
 | `miniflux` | what is the smallest thing that is still a flux program? |
 | `fluxmethods` | give me the method, not the program |
 
@@ -62,10 +60,12 @@ tested implementation of a single step to call from inside it.
 
 Full references are in [`NOTICE`](NOTICE).
 
-**The layout is the equivalence map.** One package per processing step, plus
-`core`, the same tree as `oneflux_preproc`'s `corrections/<step>/` and `core/` —
-path for path and filename for filename. `diff -r` the two and every difference
-should be one you can name. They are all named below.
+**The layout is the program's.** One package per processing step, under the
+names `onefluxpro` gives its correction kinds: `corrections/<step>/` there holds
+the facade that registers a step's methods and hands them a period, and
+`<step>/` here holds the methods. `core` is the layers they rest on, kept here
+too so the collection stands without a program around it
+([inside a program](#inside-a-program)).
 
 ## One method, three languages
 
@@ -157,8 +157,8 @@ come back with the other sign bit in R; that is not a value.
 `descriptor.json` declares each translation as a row of its own, beside the
 Python row it twins, with `"language": "r"` or `"julia"` in its `run` and the
 file as its callable (`axis_rotation/wilczak_et_al_2001.R:double_rotation`).
-The library block declares a provider per language, so a configuration of the
-reference implementation selects one by name:
+The library block declares a provider per language, so a configuration of
+`onefluxpro` selects one by name:
 
 ```
 method = double_rotation@fluxmethods          # the Python
@@ -168,7 +168,7 @@ method = double_rotation@fluxmethods_julia    # the Julia translation
 
 and likewise `block_average@fluxmethods_r` and `@fluxmethods_julia` for the
 detrending. A run is stamped with the file of the language that ran and its
-digest. `oneflux_preproc` runs its sample chain once with each rotation and
+digest. `onefluxpro` runs its sample chain once with each rotation and
 compares every output (`scripts/compare_languages.py` there), and once with a
 different language at each step — despiking in Python, rotation in R,
 detrending in Julia (`scripts/mixed_language_pipeline.py`).
@@ -183,7 +183,7 @@ method, and belongs somewhere it can say so.
 
 ## Coverage
 
-Of the 34 registered correction methods in the reference implementation, nine are
+Of the 34 correction methods `onefluxpro` registers, nine are
 GEddySoft's own and bridge to GEddySoft rather than living here. **All but one of
 the other 25 are here.**
 
@@ -193,16 +193,23 @@ swap performed by that package's library bridge. There are no engines here to
 swap from, so there is nothing for it to restore. The constants themselves *are*
 here, in `core/constants.py`.
 
-## The differences from the code this copies
+## Inside a program
 
-Every file is a verbatim copy except these, and each one is deliberate:
+[`onefluxpro`](https://github.com/pedrohenriquecoimbra/ONEFluxPro) registers
+these functions under the names a configuration writes and runs them from this
+tree: a submodule pinned at one commit in a checkout, the same tree carried
+inside the package in a wheel. Three things here exist for a program that does
+that, and none of them changes what a function computes when it is called on its
+own.
 
-1. **`core/units.py` adopts the application's unit registry** instead of building
-   one and calling `pint.set_application_registry`. That is right for a program,
-   which owns its process, and wrong for a library: importing fluxmethods would
-   otherwise repoint the global registry of whatever imported it, and pint refuses
-   to operate across two registries — so every quantity the program had already
-   made would be orphaned by the import.
+1. **`core/units.py` computes on the registry the application uses, or on one a
+   host names.** A library must not install a global registry: importing it would
+   repoint the registry of whatever imported it, and pint refuses to operate
+   across two, so every quantity the program had already made would be orphaned
+   by the import. So the registry is adopted. A program that keeps a registry of
+   its own and installs it only for the length of a run names it once
+   (`fluxmethods.core.units.adopt(registry)`), and the methods compute on that
+   one whichever is the application's at the time of a call.
 
    **Adopted is not untouched.** Two global changes are made to a registry this
    package does not own, and both are necessary:
@@ -211,53 +218,43 @@ Every file is a verbatim copy except these, and each one is deliberate:
      are checked **by meaning** and defined where the registry disagrees, with a
      warning naming what changed. Not by whether the name resolves: pint resolves
      a great many strings through its prefix parser, and `ppt` is read as
-     *pico-pint*, a volume — where these methods mean parts per thousand. A guard
+     *pico-pint*, a volume, where these methods mean parts per thousand. A guard
      that asked "is this name already known?" got `True` and skipped it, and the
      VOC path then computed in pico-pints, thirteen orders of magnitude and a
      dimension out, silently. Every meaning is pinned by a test;
    * `force_ndarray_like` is **set**. On a default registry a scalar quantity's
-     magnitude is a `float`; with the flag it is a 0-d ndarray. These files are
-     verbatim copies of code written against a registry that sets it, so without
-     it identical source would compute different types. That is the one
-     behavioural difference a diff of the two trees can never show, which is why
-     it is set explicitly here and pinned by a test rather than left to
-     `pint_xarray.setup_registry`, which happens to set it too.
+     magnitude is a `float`; with the flag it is a 0-d ndarray, which is what
+     this code is written against. It is set explicitly here and pinned by a
+     test rather than left to `pint_xarray.setup_registry`, which happens to set
+     it too.
+2. **`core/provenance.py` asks a host what a method cites.** A record written by
+   a method names the work it implements, and a collection registers nothing
+   under a name, so it has no catalogue to read that from. A program that runs
+   the methods under its own names answers by binding
+   `fluxmethods.core.provenance.citations`; unbound, a record carries no
+   citation.
+3. **`core/constants.py` is a namespace a program may set.** The density and
+   conversion methods read their constants from it when they are called, so a
+   run that computes with another engine's gas constant sets it here as well as
+   in its own.
 
-   **This is the only behavioural difference; the rest below are imports.**
-2. `despiking/vickers_et_al_1997` imports matplotlib where the one diagnostic
-   plot is drawn, not at the top.
-3. `spectral/eddypro` imports pint and `convert_unit` inside the single branch
-   that can meet a pint quantity, so a band-pass factor costs no unit registry.
-4. `spectral/commons` is a **subset**: the seven helpers the estimators here call.
-   The other thirteen bin, ensemble-average, transform or draw spectra; four of
-   those need a unit registry and one needs matplotlib, and none is a method.
+Some of the layout follows from standing alone:
 
-   A subset still has to carry what the kept helpers *use*. Taking the thirteen
-   out once took `TRANSFER_FUNCTION_MODELS` and `curve_fit` with them, and both
-   survive an import and raise `NameError` at the first call — `cutoff_lut` did,
-   which is a published method failing on a name rather than on its physics. A
-   test that only asks `callable(...)` cannot see it, so the imports are pinned
-   by tests that resolve the names instead.
-5. `core/utils` is a **subset** too: `resolve_variable` alone, of seven. The rest
-   is config parsing and path handling — a program's business, not a method's.
-6. `spectral/fitting_models` drops an import of `ureg` the module never used.
-7. `detrending/commonly_used`, `spectral/eddypro` and the `units/` pair have their
-   imports rebound to the siblings here.
-
-To check the claim yourself, against a checkout of the reference implementation:
-
-```
-diff -r --strip-trailing-cr <ref>/src/oneflux_preproc/corrections fluxmethods
-```
-
-`--strip-trailing-cr` matters on Windows: git normalises line endings per repo, so
-without it every line of every file reads as changed and the real differences are
-invisible in the noise.
+* `spectral/commons` holds the seven helpers the estimators call. What bins,
+  ensemble-averages, transforms or draws spectra is a program's, and stays in
+  one.
+* `core/utils` is `resolve_variable` alone; config parsing and path handling
+  are a program's business, not a method's.
+* `core/micrometeorology` carries the barometric rule for an unmeasured
+  pressure (`assumed_air_pressure`), which a program keeps with its importer.
+* `despiking/vickers_et_al_1997` imports matplotlib where the one diagnostic
+  plot is drawn, and `spectral/eddypro` imports pint inside the single branch
+  that can meet a quantity, so neither costs a caller who does not need it.
 
 ## Two conventions worth knowing before you call one
 
-They come from the reference implementation and are kept rather than tidied,
-because tidying them is what would make the two copies stop being the same code.
+They are how the program's facades call these functions, and are kept rather
+than tidied because a tidier signature would change every caller.
 
 **The rotations answer with an attribute object, not a tuple.**
 
@@ -280,8 +277,8 @@ The resampling functions are plain `numpy`: `f(values, times, target)` with
 `int64` nanosecond timestamps, and bin edges at the midpoints between target
 points.
 
-**The lag estimators want a `time` coordinate in float seconds.** That is the
-reference implementation's convention, and `time_lag.commons.acq_freq` derives
+**The lag estimators want a `time` coordinate in float seconds.** That is
+`onefluxpro`'s convention, and `time_lag.commons.acq_freq` derives
 the rate by differencing it. Hand it a `datetime64` coordinate and the difference
 is in *nanoseconds*, so you get 1e-8 Hz and a silently wrong answer — pass
 `acq_freq=` explicitly if your data is timestamped.
@@ -299,9 +296,9 @@ original indices. So an exact straight line with one interior gap does not
 detrend to zero, and the residual grows along the series. Since despiking puts
 gaps in before detrending runs, this is not a rare input.
 
-**It is not this project's bug, and not the reference implementation's either.**
+**It is not this project's bug.**
 GEddySoft v4.1 compacts and evaluates exactly the same way, in the same two files;
-`oneflux_preproc` transcribes that faithfully, and the transcription is a bridged
+`core/signal.py` here transcribes that faithfully, and the transcription is a bridged
 twin held equal to GEddySoft's own code to twelve digits. Correcting it in any of
 the three would not fix a defect — it would manufacture a divergence and turn
 that comparison red.
@@ -313,8 +310,9 @@ fix reaches this port.
 
 ## Install
 
-**Not on PyPI yet** — `pip install fluxmethods` does not work. Install from the
-repository:
+**Not on PyPI, and not meant to be** — `pip install fluxmethods` does not work.
+A program that runs these methods pins this repository as a submodule and ships
+the tree it pinned. To call them yourself, install from the repository:
 
 ```
 pip install git+https://github.com/pedrohenriquecoimbra/fluxmethods.git@v0.1.4
@@ -336,9 +334,8 @@ one diagnostic plot imports `matplotlib` where it is drawn.
 **The version is `fluxmethods.__version__`**, and that attribute is the single
 source: `pyproject.toml` reads it for the distribution version, so the import and
 `importlib.metadata.version("fluxmethods")` are the same string. It is an
-attribute rather than metadata because that is what `oneflux_preproc` reads —
-`core/provenance.py` takes `from .. import __version__` to stamp a run — and this
-tree is a copy of that one.
+attribute rather than metadata because that is what `core/provenance.py` reads
+(`from .. import __version__`) to stamp a run.
 
 ## Tests
 
@@ -347,8 +344,9 @@ python -m pytest tests/
 ```
 
 `unittest` only, and a smoke test rather than a physics one — the physics is
-checked against the reference implementation, on its side, where the data and
-the published comparisons are. `test_translations.py` runs the R and Julia
+checked by `onefluxpro`'s suite, which runs these files against EddyPro's and
+GEddySoft's output where the data and the published comparisons are.
+`test_translations.py` runs the R and Julia
 files against the Python and skips each language whose program (`Rscript`,
 `julia`) is not on PATH.
 

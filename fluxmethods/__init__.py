@@ -13,10 +13,10 @@ the work they implement; plus ``core``, the shared layers the estimators rest on
     fluxmethods/despiking/mauder_et_al_2013.py
     fluxmethods/core/micrometeorology.py
 
-That is deliberately the same tree as ``oneflux_preproc`` — ``corrections/<step>/``
-and ``core/`` — path for path and filename for filename, because these files are
-copies of those. The layout *is* the equivalence map: ``diff -r`` the two trees
-and every difference should be one you can name. They are named in the README.
+The step packages carry the names ``onefluxpro`` gives its correction kinds: the
+facade that registers a step's methods is ``corrections/<step>/`` there, and the
+methods are ``<step>/`` here. That package keeps no copy of these files; it runs
+them. ``core`` is kept here as well so the collection stands on its own.
 
 The modules are the contract
 ----------------------------

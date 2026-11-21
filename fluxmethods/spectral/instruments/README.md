@@ -43,7 +43,7 @@ Never edit the manifest by hand. After changing a built-in value on purpose,
 regenerate it:
 
 ```bash
-python -m oneflux_preproc.corrections.spectral.sensor_table
+python -m fluxmethods.spectral.sensor_table
 ```
 
 Editing prose fields (`note`, `source`, …) raises no alert; the hash is over

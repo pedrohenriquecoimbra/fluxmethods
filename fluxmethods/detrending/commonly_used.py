@@ -17,7 +17,7 @@ def block_average(x, **kwargs):
 def linear_detrend(x, **kwargs):
     """Detrending-registry routine: linearly detrend ``x`` (GEddySoft ``ld``).
 
-    Removes a NaN-aware linear trend (see :func:`fluxmethods.signal.nandetrend`,
+    Removes a NaN-aware linear trend (see :func:`fluxmethods.core.signal.nandetrend`,
     ported from GEddySoft) and returns an ``xr.Dataset`` keyed by the variable
     name, matching the contract of :meth:`Correction.apply` (``ds.assign(**result)``).
     """

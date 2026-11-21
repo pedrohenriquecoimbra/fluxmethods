@@ -35,7 +35,7 @@ def nearest(values, times, target, period_ns=None, **kwargs):
     an offset near half a sample, whatever the rate -- and a few per cent at the
     top of the band a flux is built from, the exact figure depending on that rate.
     The offset measured for the bundled tracer is stated in
-    :mod:`oneflux_preproc.io.importer.tracer_pipeline`.
+    :mod:`onefluxpro.io.importer.tracer_pipeline`.
     For a series that is *already at the target rate* and only needs
     aligning onto a common axis, that filtering is pure loss: it attenuates the
     high-frequency part of a covariance while leaving the correlation intact,
