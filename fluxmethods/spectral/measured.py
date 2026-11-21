@@ -5,8 +5,8 @@ Each method here needs the measured power spectra or cospectra of the period --
 is estimated by fitting a transfer function to them rather than derived from the
 instrument's geometry. That is the whole difference from :mod:`.analytic`, and it
 is why these carry the fitting machinery (:func:`fit_transfer_function`, the
-models in :mod:`.fitting_models`, the ensemble averaging in :mod:`.commons`)
-while those carry none of it.
+models in :mod:`.fitting_models`, the ensemble averaging in
+:mod:`~onefluxpro.corrections.spectral.commons`) while those carry none of it.
 
 There is no facade here: these are the functions, and what to do with the
 numbers is the caller's business.
@@ -20,13 +20,67 @@ from scipy.optimize import curve_fit
 
 from . import commons
 from .commons import correction_factor_from_transfer_function
-from .fitting_models import lorentzian, transfer_function_generator
+from .fitting_models import lorentzian, path_averaging_vector, transfer_function_generator
 from ..core.utils import resolve_variable
 
 logger = logging.getLogger(__name__)
 
-#: The variable a fitted analytic transfer function is stored under.
+#: What :func:`fully_analytical` calls the curve it builds.
+#:
+#: Named here rather than taken from the product: xarray drops a name when the two
+#: operands disagree, so ``tf.name`` would be ``None`` and the assignment would key
+#: the variable on the object ``None``. Distinct from
+#: ``transfer_function_used``, which :func:`generic_experimental` writes, so
+#: chaining the two leaves both curves rather than one.
 ANALYTIC_TRANSFER_FUNCTION = 'transfer_function_analytical'
+
+
+def _magnitude(da):
+    """A plain-float copy of a (possibly pint-quantified) DataArray."""
+    try:
+        values = np.asarray(da.pint.magnitude, dtype=float)
+    except (AttributeError, TypeError):
+        values = np.asarray(da.values, dtype=float)
+    return xr.DataArray(values, dims=da.dims,
+                        coords={k: da.coords[k] for k in da.dims if k in da.coords})
+
+
+def _per_period(ds, factor):
+    """The factor each period gets, from one formed per period *and* class.
+
+    A transfer function fitted per stability class and evaluated on every
+    period's own reference cospectrum comes out ``(date, class_stability)``. A
+    period's own factor is the one of its class, by the sign of its Obukhov
+    length (``MO_length < 0`` unstable, else stable) -- the rule the ensembles are
+    split by and the one ``_apply_spectral_factor`` maps a per-class factor with.
+    Left two-dimensional it reached no flux at all, every flux being per ``date``
+    only, while the published factor said a correction had been made. A period
+    whose class was not fitted, or whose Obukhov length is missing, gets ``NaN``.
+    """
+    if not ('date' in factor.dims and 'class_stability' in factor.dims):
+        return factor
+    if 'MO_length' not in ds:
+        logger.warning(
+            "the spectral factor is per stability class and there is no "
+            "'MO_length' to tell each period's class; it is left per class.")
+        return factor
+    mol = np.ravel(_magnitude(ds['MO_length']).values)
+    if mol.size != factor.sizes['date']:
+        logger.warning(
+            "'MO_length' has %d values for %d periods; the spectral factor is "
+            "left per class.", mol.size, factor.sizes['date'])
+        return factor
+    classes = [str(c) for c in factor['class_stability'].values]
+    want = np.where(mol < 0, 'unstable', np.where(np.isfinite(mol), 'stable', ''))
+    values = factor.transpose('date', 'class_stability', ...)
+    out = np.full(values.shape[:1] + values.shape[2:], np.nan)
+    for i, cls in enumerate(want):
+        if cls in classes:
+            out[i] = np.asarray(values.isel(date=i, class_stability=classes.index(cls)))
+    dims = ('date',) + tuple(d for d in values.dims if d not in ('date', 'class_stability'))
+    return xr.DataArray(out, dims=dims,
+                        coords={d: factor.coords[d] for d in dims if d in factor.coords},
+                        attrs=factor.attrs)
 
 
 def ibrom_et_al_2007(ds, var='co2', attenuated=None, unattenuated=None,
@@ -102,20 +156,71 @@ def generic_experimental(
                                 model_function=model_function, **kwargs)
     tf = ds['transfer_function_used']
 
-    ds[f'scf_experimental'] = correction_factor_from_transfer_function(
-        ds, tf)
+    # One factor per period: the fit is per class, the reference per period.
+    ds[f'scf_experimental'] = _per_period(
+        ds, correction_factor_from_transfer_function(ds, tf))
     return ds
 
 
 def fully_analytical(
         ds,
+        wind_speed='wind_speed',
+        path_length=None,
+        tc=0.00796,
         **kwargs):
+    """Horst (1997) first-order response times the anemometer's line averaging of ``w``.
+
+    The transfer function is
+
+        H(f) = 1 / (1 + (2 pi f tc)^2) * sqrt(T_w(f p / U))
+
+    integrated against each period's measured reference cospectrum
+    (``cospectrum_w_t_sonic_norm``) into ``scf_analytical``. The first factor is
+    the cospectral transfer function of a first-order sensor of time constant
+    ``tc`` (Horst 1997); the second is the line averaging of the vertical wind
+    over the anemometer's acoustic path ``p``, a variance transfer function
+    (:func:`~.fitting_models.path_averaging_vector`) on ``f p / U``, entering the
+    one cospectrum leg it damps as its square root.
+
+    ``p`` is the anemometer's vertical path (``path_length``, else
+    :func:`~.analytic._sonic_geometry`) and ``U`` the period's mean wind speed,
+    floored at :data:`~.analytic.MIN_WIND_SPEED` like the other analytic
+    methods. The path term used to be evaluated on ``normalized_frequency``,
+    ``f (z-d) / U``: the measurement height in place of the acoustic path, about
+    fifteen times too long at a 2 m tower, and the variance form in place of its
+    root. Without a wind speed or a path the method skips, saying so.
+    """
+    from .analytic import INSTRUMENTS, MIN_WIND_SPEED, _sonic_geometry, handed
+
+    if wind_speed not in ds:
+        logger.warning("fully_analytical: no %r to place the path averaging in "
+                       "frequency; skipping.", wind_speed)
+        return ds
+    acq = float(ds.attrs.get('acquisition_frequency', 20.0) or 20.0)
+    path, _ = _sonic_geometry(ds, acq, path_length, handed(kwargs, INSTRUMENTS))
+    if not path:
+        logger.warning("fully_analytical: no usable anemometer path length "
+                       "(declared or known for this model); skipping.")
+        return ds
+
+    U = _magnitude(ds[wind_speed])
+    U = U.where(~np.isfinite(U) | (U >= MIN_WIND_SPEED), MIN_WIND_SPEED)
+    fn = ds['frequency'] * path / U
+    with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        tw = xr.apply_ufunc(path_averaging_vector, fn)
+    # The function's limit at fn -> 0 is 1; a missing wind leaves it missing, so
+    # that period's factor is NaN rather than a unit one.
+    tw = xr.where(fn > 0, tw.clip(0.0, 1.0), xr.where(fn == 0, 1.0, np.nan))
     tf = (
-        transfer_function_generator(ds, freq='frequency', model='horst_1997', α=2) *
-        transfer_function_generator(
-            ds, model='sonic_path_averaging', freq='normalized_frequency')
+        transfer_function_generator(ds, freq='frequency', model='horst_1997',
+                                    tc=tc, α=2) *
+        np.sqrt(tw)
     )
     ds = ds.assign({ANALYTIC_TRANSFER_FUNCTION: tf})
+    ds[ANALYTIC_TRANSFER_FUNCTION].attrs.update({
+        'description': 'Horst (1997) first-order response x sqrt of the sonic '
+                       'line averaging of w on f p / U',
+        'sonic_path_length_m': float(path), 'tc_s': float(tc)})
 
     ds[f'scf_analytical'] = correction_factor_from_transfer_function(
         ds, tf)
@@ -131,6 +236,7 @@ def cutoff_lut(
         cov_window=(0.021, 0.34),
         fit_window=(0.021, 10.0),
         varclim=1.0,
+        per_ln_f=True,
         **kwargs) -> xr.Dataset:
     """Cut-off-frequency correction factors, after FreqCor.
 
@@ -172,6 +278,14 @@ def cutoff_lut(
         Maximum coefficient of variation accepted by the quality check. A
         stability class whose transfer function fails it is reported with a
         ``NaN`` cut-off frequency and a unit correction factor, and logged.
+    per_ln_f : bool
+        Whether ``reference`` is a density per ``ln f``, ``f Co(f)`` -- which the
+        ensembles :func:`prep_for_correction` builds are, each band sum divided
+        by its ``df/f``. The factor integral (FreqCor's) is over linear
+        frequency, so such a reference is handed to it as ``Co(f) = (f Co)/f``;
+        integrated as it stood it weighted every frequency by an extra ``f``,
+        overweighting the attenuated top of the band and about doubling the
+        factor. ``False`` for a reference that already is ``Co(f)``.
     """
     label = model if isinstance(model, str) else getattr(model, '__name__', 'model')
 
@@ -210,8 +324,11 @@ def cutoff_lut(
             continue
 
         fit = commons.fit_cutoff_frequency(tf, f, model=model, fit_window=fit_window)
+        ideal = np.asarray(ref_v, dtype=float)
+        if per_ln_f:
+            ideal = ideal / f                         # f Co(f) -> Co(f)
         factor = commons.correction_factor_bracketed(
-            ref_v, f, fit['fc'], fit['fc_unc'], model=model)
+            ideal, f, fit['fc'], fit['fc_unc'], model=model)
 
         fc.append(fit['fc'])
         fc_unc.append(fit['fc_unc'])

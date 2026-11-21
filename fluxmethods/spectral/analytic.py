@@ -8,22 +8,157 @@ period. None of them reads a measured spectrum, which is what
 period that has none.
 
 The facade that registers them, decides which may be selected together and
-applies them to a dataset is :mod:`.main`; the methods that fit a transfer
-function to this site's own measured spectra are :mod:`.measured`.
+applies them to a dataset is :mod:`~onefluxpro.corrections.spectral.main`; the methods that fit a
+transfer function to this site's own measured spectra are :mod:`.measured`.
 """
 
+import fnmatch
 import logging
+import re
 
 import numpy as np
 import xarray as xr
 
-from .sensor_table import sensor_geometry
+from .sensor_table import sensor_geometry, sensor_kinds
 
 logger = logging.getLogger(__name__)
 
-#: Below this wind speed a period's advective time scales stop being meaningful
-#: and the analytic transfer functions are not applied [m s-1].
+#: Floor on the mean wind speed used to normalise frequencies [m s-1]. Every
+#: analytic transfer function here enters through ``f * L / u``, which diverges as
+#: the wind drops, so a near-calm period would otherwise be assigned an unbounded
+#: correction. Below the floor the transfer functions are still applied, as if
+#: the wind blew at this speed: the floor bounds the factor rather than trying to
+#: describe those periods, whose flux is meaningless and normally rejected by
+#: quality control anyway. The EddyPro transcriptions carry no such floor
+#: (:func:`~.eddypro._usable_wind`).
 MIN_WIND_SPEED = 0.3
+
+#: The detrending methods that are block averaging, the filter whose high-pass
+#: transfer function :func:`block_average_highpass` and the EddyPro
+#: transcriptions implement.
+BLOCK_AVERAGE_METHODS = ('ba', 'block_average')
+
+#: A numbered instance of a kind: ``detrending_2`` (or ``detrending.2``).
+_INSTANCE = re.compile(r"^detrending(?:[._]\d+)?$")
+
+#: The variables each flux family is built from, for the scopes that are not
+#: "every scalar": a heat factor reaches ``w'Ts'``, a momentum one ``u'w'``.
+_SCOPE_LEGS = {'heat': ('w', 'ts', 't_sonic'), 'momentum': ('u', 'v', 'w')}
+
+
+def _selected(block):
+    """The ``select`` entries of a configuration block, as a list of names.
+
+    A block that selects nothing is read as selecting everything: this is a
+    question of what *might* have been detrended, and a step the run would have
+    refused cannot be assumed harmless here either.
+    """
+    select = block.get('select') if hasattr(block, 'get') else None
+    if select is None or select == '' or select == []:
+        return ['*']
+    if isinstance(select, str):
+        select = select.split(',')
+    return [str(s).strip() for s in select if str(s).strip()]
+
+
+def _reaches(entry, scope):
+    """Whether the variable (or pattern) ``entry`` is a leg of a ``scope`` flux.
+
+    ``w`` is a leg of every flux. A gas flux is built from ``w`` and a scalar that
+    is not the sonic temperature, ``'all'`` from ``w`` and any scalar.
+    """
+    if scope in _SCOPE_LEGS:
+        return any(fnmatch.fnmatchcase(v, entry) for v in _SCOPE_LEGS[scope])
+    if entry == '*':
+        return True
+    excluded = ('u', 'v', 'ts', 't_sonic') if scope == 'gas' else ('u', 'v')
+    return entry not in excluded
+
+
+#: What a method was not handed by a plan: it reads the setting from the dataset's
+#: attributes, as a caller holding no plan has it.
+UNHANDED = object()
+
+#: What the analytic and EddyPro methods declare they read beyond their block: the
+#: sensors, found by reading every ``[Instruments]`` block; every detrending step,
+#: found by reading every ``[Corrections]`` block; and the averaging period.
+INSTRUMENTS, CORRECTIONS = "Instruments", "Corrections"
+PERIOD = ("Options.process_duration", "Files.fileduration")
+
+
+def handed(kwargs, name):
+    """What a plan handed a method as ``name`` (``None`` for a key not set), or
+    :data:`UNHANDED` where nothing was."""
+    return kwargs.get(name, UNHANDED)
+
+
+def _stated(block, key):
+    """Whether ``block`` writes ``key`` at all, as text or as the number a plan
+    types it to: ``0`` is stated, a blank is not."""
+    value = block.get(key)
+    return value is not None and str(value).strip() != ''
+
+
+def _section(ds, name, given=UNHANDED):
+    """``[name]`` as a plan handed it, else from the dataset's attributes."""
+    if given is not UNHANDED:
+        return given or {}
+    return (ds.attrs.get(name, {}) or {}) if hasattr(ds, 'attrs') else {}
+
+
+def detrending_not_block_average(ds, scope='all', corrections=UNHANDED):
+    """``[(step, method, [variables])]`` for every detrending step that is not
+    block averaging and reaches a flux of ``scope``; empty when the block-average
+    high pass describes every such flux.
+
+    Reads every detrending step the configuration carries, the base block and its
+    numbered instances alike: a run may detrend the temperature one way and the
+    gases another -- the GEddySoft translator writes ``detrending`` and
+    ``detrending_2`` itself when its two detrend flags differ -- and the base
+    block alone then describes only the variables it selects. A variable that no
+    step selects is block-averaged by the covariance, which removes its mean, so
+    it is never the reason for a refusal. A step without a method is disabled.
+    ``corrections`` is ``[Corrections]`` as a plan hands it.
+    """
+    corrections = _section(ds, CORRECTIONS, corrections)
+    out = []
+    for step, block in corrections.items():
+        if not _INSTANCE.match(str(step)) or not hasattr(block, 'get'):
+            continue
+        method = block.get('method')
+        if not method or str(method) in BLOCK_AVERAGE_METHODS:
+            continue
+        reached = [v for v in _selected(block) if _reaches(v, scope)]
+        if reached:
+            out.append((str(step), str(method), reached))
+    return out
+
+
+def describe_detrending(offending):
+    """The steps :func:`detrending_not_block_average` found, for a log line."""
+    return '; '.join(f"{step} is {method!r} on {', '.join(variables)}"
+                     for step, method, variables in offending)
+
+
+def high_pass_switch(value, alias, default, name, alias_name, caller):
+    """One high-pass switch from the two spellings the two families use.
+
+    The EddyPro transcriptions call it ``high_pass`` and the built-ins
+    ``highpass``. The facade hands every key of the configuration block to every
+    method, so the other family's spelling used to be swallowed by ``**kwargs``
+    and the default stood. Each family now reads both; when both are given and
+    disagree, its own spelling wins, and that is said.
+    """
+    if value is None and alias is None:
+        return bool(default)
+    if alias is None:
+        return bool(value)
+    if value is None:
+        return bool(alias)
+    if bool(value) != bool(alias):
+        logger.warning("%s: %s=%r and %s=%r are both set and disagree; using "
+                       "%s=%r.", caller, name, value, alias_name, alias, name, value)
+    return bool(value)
 
 
 def _known_sensor(model):
@@ -38,24 +173,30 @@ def _known_sensor(model):
     return table[max(matches, key=len)] if matches else None
 
 
-def _find_tube(ds):
+def _find_tube(ds, instruments=UNHANDED):
     """Closed-path analyser geometry, from the setup ``Instruments``.
 
     Returns ``{'L': length_m, 'r_mm': bore_radius_mm, 'lpm': flow_l_per_min,
-    'separation': m}`` for the first instrument block that declares a
+    'separation': m, 'vertical_separation': m, 'path_length': m or None,
+    'tau': s or None}`` for the first instrument block that declares a
     ``tube_length`` (a closed-path analyser), or ``None`` for an open-path setup
-    (no tube, no attenuation). ``separation`` is the 3-D distance between the
-    analyser intake and the sonic path, from the block's ``*_separation`` fields
-    (declared in centimetres, as EddyPro's metadata does); it drives the
-    sensor-separation transfer function.
+    (no tube, no attenuation). ``separation`` is the *horizontal* distance
+    between the analyser intake and the sonic path, ``hypot(northward,
+    eastward)``, and ``vertical_separation`` the vertical one: they attenuate
+    independently (Moore 1986), so they are returned apart rather than as one
+    3-D distance, and both drive the sensor-separation transfer function.
+    ``path_length`` and ``tau`` are the analyser's optical path and response
+    time, the declared value when it is plausible and the model's published one
+    otherwise.
 
-    Lengths follow EddyPro's metadata units: ``tube_length`` and the separations in
-    **centimetres**, ``tube_diameter`` in **millimetres**. The tube length is
-    converted here for the same reason the separations are.
+    Lengths follow EddyPro's metadata units: ``tube_length``, the separations and
+    ``vpath_length`` in **centimetres**, ``tube_diameter`` in **millimetres**.
+    Every one is converted here, at the one boundary where the block is read.
+    ``instruments`` is ``[Instruments]`` as a plan hands it.
     """
-    instruments = ds.attrs.get('Instruments', {}) if hasattr(ds, 'attrs') else {}
+    instruments = _section(ds, INSTRUMENTS, instruments)
     for block in (instruments or {}).values():
-        if not hasattr(block, 'get') or not block.get('tube_length'):
+        if not hasattr(block, 'get') or not _stated(block, 'tube_length'):
             continue
         try:
             L = float(block['tube_length']) / 100.0        # cm -> m
@@ -95,16 +236,17 @@ def _find_tube(ds):
                                "number; ignored.", block.get('model'), key, raw)
                 return None
 
-        declared_path = _declared('vpath_length')
+        declared_cm = _declared('vpath_length')
+        declared_path = declared_cm / 100.0 if declared_cm is not None else None   # cm -> m
         declared_tau = _declared('tau')
         opt_path = (declared_path if (declared_path and 0.01 < declared_path < 0.5)
                     else known.get('vpath_length'))
         opt_tau = declared_tau if (declared_tau and 0 < declared_tau < 1.0) else known.get('tau')
         if declared_path is not None and not (0.01 < declared_path < 0.5):
             logger.warning(
-                "analyser %r declares vpath_length = %s m, outside the plausible "
-                "0.01-0.5 m; using %s.", block.get('model'), declared_path,
-                opt_path if opt_path is not None else "nothing")
+                "analyser %r declares vpath_length = %s cm (%.4g m), outside the "
+                "plausible 0.01-0.5 m; using %s.", block.get('model'), declared_cm,
+                declared_path, opt_path if opt_path is not None else "nothing")
         if declared_tau is not None and not (0 < declared_tau < 1.0):
             logger.warning(
                 "analyser %r declares tau = %s s, outside the plausible (0, 1) s; "
@@ -172,13 +314,17 @@ def _highpass_transfer(F, minutes):
     return np.clip(np.where(np.isfinite(H), H, 1.0), 0.0, 1.0)
 
 
-def _averaging_minutes(ds):
-    options = ds.attrs.get('Options', {}) or {}
-    return (options.get('process_duration')
-            or (ds.attrs.get('Files', {}) or {}).get('fileduration') or 30)
+def _averaging_minutes(ds, process_duration=UNHANDED, fileduration=UNHANDED):
+    """``Options.process_duration``, else ``Files.fileduration``, else 30: each as a
+    plan hands it, else from the dataset's attributes."""
+    if process_duration is UNHANDED:
+        process_duration = (ds.attrs.get('Options', {}) or {}).get('process_duration')
+    if not process_duration and fileduration is UNHANDED:
+        fileduration = (ds.attrs.get('Files', {}) or {}).get('fileduration')
+    return process_duration or fileduration or 30
 
 
-def _averaging_seconds(ds):
+def _averaging_seconds(ds, process_duration=UNHANDED, fileduration=UNHANDED):
     """The averaging period in seconds, falling back the way the filter does.
 
     The high-pass corner is set by this period, so the integration grid and the
@@ -186,7 +332,7 @@ def _averaging_seconds(ds):
     """
     import numpy as np
     try:
-        T = float(_averaging_minutes(ds)) * 60.0
+        T = float(_averaging_minutes(ds, process_duration, fileduration)) * 60.0
     except (TypeError, ValueError):
         return 1800.0
     return T if (np.isfinite(T) and T > 0) else 1800.0
@@ -203,6 +349,7 @@ def _cospectrum_shape(model, F, zmd, u_i, zL_i):
     zeroed so the integrals below are well posed.
     """
     import numpy as np
+    # ``max`` keeps a NaN wind, so the caller tests for one before getting here.
     n = F * zmd / max(float(u_i), MIN_WIND_SPEED)
     try:
         form = np.asarray(model(n, zL_i), dtype=float)
@@ -211,11 +358,57 @@ def _cospectrum_shape(model, F, zmd, u_i, zL_i):
     return np.where(np.isfinite(form) & (form > 0), form, 0.0)
 
 
-def _sonic_geometry(ds, acq_freq, path_length=None):
+def _known_kind(model):
+    """``'sonic_anemometer'`` / ``'gas_analyser'`` for a model, or ``None``."""
+    name = str(model or '').strip().lower()
+    kinds = sensor_kinds()
+    matches = [k for k in kinds if name.startswith(k)]
+    return kinds[max(matches, key=len)] if matches else None
+
+
+def _anemometer_block(ds, instruments=UNHANDED):
+    """``(name, block)`` of the anemometer in ``[Instruments]``, or ``(None, None)``.
+
+    The instrument the wind was measured with, when the dataset says so: the
+    import stamps every variable with its ``instrument``, and the block ``w``
+    names is the anemometer whatever order the blocks were written in. Without
+    that stamp, the first block that is not identifiably a gas analyser -- one
+    declaring a ``tube_length``, or whose model the bundled sensor files list as
+    an analyser. Taking the first block whatever it described handed an analyser
+    listed first the anemometer's role, and its path and response time with it,
+    without a word. ``instruments`` is ``[Instruments]`` as a plan hands it.
+    """
+    instruments = _section(ds, INSTRUMENTS, instruments)
+    blocks = {name: block for name, block in instruments.items()
+              if hasattr(block, 'get')}
+    for var in ('w', 'u', 'v'):
+        if var in ds:
+            named = ds[var].attrs.get('instrument')
+            if named in blocks:
+                return named, blocks[named]
+    for name, block in blocks.items():
+        if _stated(block, 'tube_length'):
+            continue
+        if _known_kind(block.get('model') or name) == 'gas_analyser':
+            continue
+        return name, block
+    if blocks:
+        logger.warning(
+            "no [Instruments] block is identifiable as the anemometer (each "
+            "declares a tube or is a known gas analyser, and no wind variable "
+            "names its instrument); the anemometer geometry is unknown.")
+    return None, None
+
+
+def _sonic_geometry(ds, acq_freq, path_length=None, instruments=UNHANDED):
     """``(path_length [m], tau [s])`` for the anemometer.
 
-    The acoustic path is the *vertical* one, which sets the line averaging of both
-    ``w`` and the sonic temperature (EddyPro normalises by ``vpath_length`` too).
+    The block is the anemometer's (:func:`_anemometer_block`), not merely the
+    first one. The acoustic path is the *vertical* one, which sets the line
+    averaging of both ``w`` and the sonic temperature (EddyPro normalises by
+    ``vpath_length`` too). It is declared in **centimetres**, as EddyPro's
+    metadata declares it and as the tube and separation lengths beside it are
+    (:func:`_find_tube`), and converted here.
 
     Each value is taken from the setup only when it is self-consistent, and
     otherwise from the instrument's published specification (the bundled files
@@ -229,10 +422,9 @@ def _sonic_geometry(ds, acq_freq, path_length=None):
     A component with neither a usable declaration nor a known model is returned as
     ``None``, leaving the caller to decline rather than invent one.
     """
-    declared_path = declared_tau = model = None
-    for name, block in (ds.attrs.get('Instruments', {}) or {}).items():
-        if not hasattr(block, 'get'):
-            continue
+    declared_path = declared_cm = declared_tau = model = None
+    name, block = _anemometer_block(ds, instruments)
+    if block is not None:
         model = block.get('model') or name
 
         def _number(key):
@@ -246,8 +438,9 @@ def _sonic_geometry(ds, acq_freq, path_length=None):
                                "number; ignored.", model, key, raw)
                 return None
 
-        declared_path, declared_tau = _number('vpath_length'), _number('tau')
-        break
+        declared_cm, declared_tau = _number('vpath_length'), _number('tau')
+        if declared_cm is not None:
+            declared_path = declared_cm / 100.0                  # cm -> m
 
     known = _known_sensor(model) or {}
     usable_path = declared_path if (declared_path and 0.01 < declared_path < 0.5) else None
@@ -255,16 +448,21 @@ def _sonic_geometry(ds, acq_freq, path_length=None):
                   else None)
     if declared_path is not None and usable_path is None and not path_length:
         logger.warning(
-            "anemometer %r declares vpath_length = %s m, outside the plausible "
-            "0.01-0.5 m; using %s.", model, declared_path,
+            "anemometer %r declares vpath_length = %s cm (%.4g m), outside the "
+            "plausible 0.01-0.5 m; using %s.", model, declared_cm, declared_path,
             known.get('vpath_length') if known.get('vpath_length') is not None
             else "nothing -- methods that need it will skip")
     if declared_tau is not None and usable_tau is None:
+        # No single fallback exists to name: each consumer treats a missing
+        # response time its own way, so the message says what each one does.
         logger.warning(
             "anemometer %r declares tau = %s s, which cannot sustain the %s Hz "
             "acquisition; using %s.", model, declared_tau, acq_freq,
             known.get('tau') if known.get('tau') is not None
-            else "nothing -- the acquisition frequency stands in")
+            else ("no response time -- lowpass_analytic_sonic omits the dynamic "
+                  "term, the sonic leg of lowpass_analytic_closedpath takes the "
+                  "acquisition rate as the response, and the "
+                  "bandpass_moncrieff_1997_* methods skip"))
     return (path_length or usable_path or known.get('vpath_length'),
             usable_tau or known.get('tau'))
 
@@ -347,14 +545,15 @@ def block_average_highpass(ds, cospectrum='kaimal_1972', wind_speed='wind_speed'
     from .fitting_models import COSPECTRAL_MODELS
 
     # The high-pass filter is a property of how the mean was removed, so only apply
-    # it to the detrending it actually describes.
-    detrending = ((ds.attrs.get('Corrections', {}) or {}).get('detrending', {}) or {})
-    method = (detrending.get('method') if hasattr(detrending, 'get') else None) or 'ba'
-    if str(method) not in ('ba', 'block_average'):
+    # it to the detrending it actually describes -- on every flux the factor
+    # reaches, which for this method is all of them.
+    offending = detrending_not_block_average(ds, 'all', handed(kwargs, CORRECTIONS))
+    if offending:
         logger.warning(
-            "block_average_highpass describes block averaging, but detrending is %r; "
-            "its high-pass transfer function differs (Rannik & Vesala 1999) and is "
-            "not implemented, so no low-frequency correction is applied.", method)
+            "block_average_highpass describes block averaging, but %s; that "
+            "high-pass transfer function differs (Rannik & Vesala 1999) and is "
+            "not implemented, and this factor reaches every flux, so no "
+            "low-frequency correction is applied.", describe_detrending(offending))
         return ds
 
     geom = _period_geometry(ds, wind_speed, height, stability)
@@ -365,9 +564,8 @@ def block_average_highpass(ds, cospectrum='kaimal_1972', wind_speed='wind_speed'
     U, zmd, zL = geom
 
     if averaging_minutes is None:
-        options = ds.attrs.get('Options', {}) or {}
-        averaging_minutes = (options.get('process_duration')
-                             or (ds.attrs.get('Files', {}) or {}).get('fileduration') or 30)
+        averaging_minutes = _averaging_minutes(ds, handed(kwargs, 'process_duration'),
+                                               handed(kwargs, 'fileduration'))
     try:
         T = float(averaging_minutes) * 60.0
     except (TypeError, ValueError):
@@ -388,6 +586,9 @@ def block_average_highpass(ds, cospectrum='kaimal_1972', wind_speed='wind_speed'
 
     cf = np.ones_like(U, dtype=float)
     for i in range(U.size):
+        if not np.isfinite(U[i]):
+            cf[i] = np.nan          # no wind speed, no factor -- not a unit one
+            continue
         zL_i = float(np.atleast_1d(zL)[i]) if np.atleast_1d(zL).size > i else 0.0
         form = _cospectrum_shape(model, F, zmd, U[i], zL_i)
         den = trapz(form * H, lnF)
@@ -404,8 +605,8 @@ def block_average_highpass(ds, cospectrum='kaimal_1972', wind_speed='wind_speed'
 
 def sonic_response(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
                    height='z-d', stability='z_L', path_length=None, nfreq=400,
-                   highpass=False, freq_range=None, inband_block_average=False,
-                   **kwargs):
+                   highpass=None, freq_range=None, inband_block_average=False,
+                   high_pass=None, **kwargs):
     """High-frequency loss of the *sonic* heat flux (path averaging + response).
 
     The sonic temperature flux has none of the closed-path losses -- no tube, and no
@@ -424,11 +625,19 @@ def sonic_response(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
     the cospectrum, but the default ``kaimal_1972`` is the neutral form and ignores
     it, so the default factor does not vary with ``z/L``; use ``moncrieff_1997`` if
     that dependence is wanted.
+
+    ``highpass`` (default off) folds the block-averaging high pass into the same
+    integral; ``high_pass``, the EddyPro transcriptions' spelling, is read as the
+    same switch. A period without a finite wind speed gets ``NaN``.
     """
     import numpy as np
     from .fitting_models import (COSPECTRAL_MODELS,
                                  transfer_function_sonic_cospectrum as _sonic_tf,
         transfer_function_block_averaging_inband as _ba_tf)
+
+    highpass = high_pass_switch(highpass, high_pass, False, 'highpass',
+                                'high_pass', 'sonic_response')
+    period = (handed(kwargs, 'process_duration'), handed(kwargs, 'fileduration'))
 
     geom = _period_geometry(ds, wind_speed, height, stability)
     if geom is None:
@@ -438,11 +647,11 @@ def sonic_response(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
 
     acq = float(ds.attrs.get('acquisition_frequency', 20.0)) or 20.0
     _grid = _frequency_grid(acq, nfreq, freq_range,
-                            highpass_period_s=_averaging_seconds(ds) if highpass else None)
-    hp = _highpass_transfer(_grid, _averaging_minutes(ds)) if highpass else 1.0
+                            highpass_period_s=_averaging_seconds(ds, *period) if highpass else None)
+    hp = _highpass_transfer(_grid, _averaging_minutes(ds, *period)) if highpass else 1.0
     if inband_block_average:
         hp = hp * _ba_tf(_grid, acq_freq=acq) ** 2      # w and Ts legs alike
-    path_length, tau = _sonic_geometry(ds, acq, path_length)
+    path_length, tau = _sonic_geometry(ds, acq, path_length, handed(kwargs, INSTRUMENTS))
     if path_length is None:
         logger.warning("sonic_response: no usable anemometer path length "
                        "(declared or known for this model); skipping.")
@@ -454,6 +663,9 @@ def sonic_response(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
 
     cf = np.ones_like(U, dtype=float)
     for i in range(U.size):
+        if not np.isfinite(U[i]):
+            cf[i] = np.nan          # no wind speed, no factor -- not a unit one
+            continue
         u_i = max(float(U[i]), MIN_WIND_SPEED)
         zL_i = float(np.atleast_1d(zL)[i]) if np.atleast_1d(zL).size > i else 0.0
         form = _cospectrum_shape(model, F, zmd, u_i, zL_i)
@@ -475,8 +687,8 @@ def sonic_response(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
 def analytic_tube(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
                   height='z-d', stability='z_L', tube=None, nfreq=400,
                   tube_model='foken_et_al_2012', sonic_path_length=None,
-                  highpass=False, freq_range=None, inband_block_average=False,
-                  **kwargs):
+                  highpass=None, freq_range=None, inband_block_average=False,
+                  high_pass=None, **kwargs):
     """Analytic closed-path spectral correction factor (per period).
 
     The physically-transparent, spectra-free correction: for each averaging period
@@ -515,6 +727,10 @@ def analytic_tube(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
     anemometer's response still attenuate an open-path cospectrum. Those need their
     own registered method; the unit factor here is a statement that *this* routine
     does not describe that instrument, and it says so in the log.
+
+    ``highpass`` (default off) folds the block-averaging high pass into the same
+    integral; ``high_pass``, the EddyPro transcriptions' spelling, is read as the
+    same switch. A period without a finite wind speed gets ``NaN``.
     """
     import numpy as np
     from .fitting_models import (
@@ -527,6 +743,9 @@ def analytic_tube(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
         transfer_function_block_averaging_inband as _ba_tf)
 
     _tube_tf = _tube_moore if str(tube_model).startswith(('moore', 'lenschow'))         else _tube_foken
+    highpass = high_pass_switch(highpass, high_pass, False, 'highpass',
+                                'high_pass', 'analytic_tube')
+    period = (handed(kwargs, 'process_duration'), handed(kwargs, 'fileduration'))
 
     def _mag(name):
         if name not in ds:
@@ -547,7 +766,7 @@ def analytic_tube(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
     if zL is None:
         zL = np.zeros_like(U)
 
-    geom = tube if tube is not None else _find_tube(ds)
+    geom = tube if tube is not None else _find_tube(ds, handed(kwargs, INSTRUMENTS))
     dims = ds[wind_speed].dims
     if not geom:
         # No tube declared, so this routine has nothing to say about the analyser.
@@ -564,18 +783,19 @@ def analytic_tube(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
 
     acq = float(ds.attrs.get('acquisition_frequency', 20.0)) or 20.0
     F = _frequency_grid(acq, nfreq, freq_range,
-                        highpass_period_s=_averaging_seconds(ds) if highpass else None)
+                        highpass_period_s=_averaging_seconds(ds, *period) if highpass else None)
     lnF = np.log(F)
     H = _tube_tf(F, r=geom['r_mm'], L=geom['L'], lpm=geom['lpm'])
     if highpass:
-        H = H * _highpass_transfer(F, _averaging_minutes(ds))
+        H = H * _highpass_transfer(F, _averaging_minutes(ds, *period))
     if inband_block_average:
         # One factor per leg: the anemometer's variable and the analyser's are both
         # block-averaged by the data system.
         H = H * _ba_tf(F, acq_freq=acq) ** 2
     model = COSPECTRAL_MODELS[cospectrum] if isinstance(cospectrum, str) else cospectrum
     trapz = getattr(np, 'trapezoid', None) or np.trapz
-    path_len, sonic_tau = _sonic_geometry(ds, acq, sonic_path_length)
+    path_len, sonic_tau = _sonic_geometry(ds, acq, sonic_path_length,
+                                          handed(kwargs, INSTRUMENTS))
     if path_len is None:
         logger.warning(
             "analytic_tube: no usable anemometer path length (declared or known "
@@ -596,6 +816,9 @@ def analytic_tube(ds, cospectrum='kaimal_1972', wind_speed='wind_speed',
 
     cf = np.ones_like(U, dtype=float)
     for i in range(U.size):
+        if not np.isfinite(U[i]):
+            cf[i] = np.nan          # no wind speed, no factor -- not a unit one
+            continue
         u_i = max(float(U[i]), MIN_WIND_SPEED)
         zL_i = float(np.atleast_1d(zL)[i]) if np.atleast_1d(zL).size > i else 0.0
         n = F * zmd / u_i

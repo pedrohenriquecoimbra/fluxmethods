@@ -165,14 +165,56 @@ def load_sensor_geometry(directory=None):
     return table
 
 
+def load_sensor_kinds(directory=None):
+    """The ``model -> kind`` mapping (``sonic_anemometer`` / ``gas_analyser``).
+
+    Read from the same files as :func:`load_sensor_geometry`, aliases included,
+    and kept apart from the geometry so that table stays the published one value
+    for value. It is what lets the spectral methods tell the anemometer's block
+    from an analyser's when the blocks are not in the order they assume. A file
+    the geometry loader refuses contributes nothing here either.
+    """
+    directory = _BUNDLED_DIR if directory is None else directory
+    kinds = {}
+    try:
+        entries = sorted(os.listdir(directory))
+    except OSError:
+        return kinds
+    for entry in entries:
+        if not entry.endswith('.json') or entry.startswith('_'):
+            continue
+        try:
+            with open(os.path.join(directory, entry), encoding='utf-8') as fh:
+                record = json.load(fh)
+        except (OSError, ValueError, RecursionError):
+            continue
+        validated = _validated(record, entry)
+        kind = str(record.get('kind') or '').strip().lower() if validated else ''
+        if not kind:
+            continue
+        model, aliases, _ = validated
+        for name in (model, *aliases):
+            kinds.setdefault(name, kind)
+    return kinds
+
+
 _TABLE = None
+_KINDS = None
+
+
+def sensor_kinds():
+    """The bundled ``model -> kind`` mapping, read once on first use."""
+    global _KINDS
+    if _KINDS is None:
+        _KINDS = load_sensor_kinds()
+    return _KINDS
 
 
 def sensor_geometry():
     """The bundled table, read once on first use.
 
     Deferred past import so the provenance alerts land in whatever logging the
-    application configured, not in the middle of ``import oneflux_preproc``.
+    application configured, not in the middle of an import.
     """
     global _TABLE
     if _TABLE is None:
@@ -186,7 +228,7 @@ def stamp_manifest(directory=None):
     Maintainer step, mirroring how the setup build scripts stamp the config
     lock: never edit the manifest by hand, regenerate it::
 
-        python -m oneflux_preproc.corrections.spectral.sensor_table
+        python -m fluxmethods.spectral.sensor_table
     """
     directory = _BUNDLED_DIR if directory is None else directory
     manifest = {}

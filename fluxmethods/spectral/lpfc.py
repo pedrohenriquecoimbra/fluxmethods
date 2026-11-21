@@ -4,7 +4,7 @@ GEddySoft offers two low-pass-filtering corrections:
 
 * ``LPFC = 1`` — cut-off frequency fitted against a Massman reference cospectrum.
   This package already implements that science as the FreqCor-derived
-  :func:`~oneflux_preproc.corrections.spectral.main.cutoff_lut` routine.
+  :func:`~onefluxpro.corrections.spectral.main.cutoff_lut` routine.
 * ``LPFC = 2`` — a **precomputed** correction factor read from a look-up table
   binned by atmospheric stability (unstable/stable) and mean wind speed. This
   module ports that table lookup (GEddySoft ``correction_factor_lpf`` with a
@@ -97,22 +97,52 @@ def _magnitude(da):
         return np.asarray(da.values)
 
 
+#: Below this, a mean wind vector built from ``u``, ``v`` and ``w`` is the
+#: numerical floor of a detrended series, not a wind [m s-1]. A real calm is
+#: orders of magnitude above it; a block mean of zero-mean fluctuations is
+#: ~1e-16.
+_DETRENDED_FLOOR = 1e-6
+
+
 def _mean_wind_speed(ds, wind_speed):
     """The wind speed GEddySoft looks the factor up on.
 
     Its ``GEddySoft_main`` passes ``sqrt(mean_u^2 + mean_v^2 + mean_w^2)``, the
-    magnitude of the mean wind vector. After a double rotation that equals the
-    rotated along-wind mean, so ``u`` gives the same number here; it is computed
-    from the three components anyway, so the lookup does not silently depend on
-    which rotation the run selected.
+    magnitude of the mean wind vector, from components that still carry their
+    means. Here a component a detrending step selected is by now the block mean
+    of a zero-mean fluctuation, ~1e-16 m/s, and a lookup on it read the first
+    wind-speed bin for every period. So each component is taken from its
+    pre-detrending snapshot ``<c>_bfr_detrending`` when the run kept one, which
+    is GEddySoft's quantity (the magnitude does not depend on the rotation). A
+    period whose vector is still below the floor of a detrended series falls back
+    to the pipeline's ``wind_speed`` -- the horizontal mean speed from the
+    unrotated components -- and, without one, is refused (``NaN``, said once)
+    rather than looked up. An explicit ``wind_speed=`` is used as given.
     """
     if wind_speed is not None:
-        return np.atleast_1d(_magnitude(ds[wind_speed]))
-    parts = [np.atleast_1d(_magnitude(ds[c])) for c in ('u', 'v', 'w') if c in ds]
+        return np.atleast_1d(_magnitude(ds[wind_speed])).astype(float)
+    parts = [np.atleast_1d(_magnitude(ds[f'{c}_bfr_detrending' if f'{c}_bfr_detrending' in ds
+                                         else c]))
+             for c in ('u', 'v', 'w') if c in ds]
     if not parts:
+        if 'wind_speed' in ds:
+            return np.atleast_1d(_magnitude(ds['wind_speed'])).astype(float)
         raise KeyError("lpfc_lut: no wind components (u, v, w) to build a mean "
                        "wind speed from; pass wind_speed=<variable>")
-    return np.sqrt(np.sum([np.square(p) for p in parts], axis=0))
+    ws = np.sqrt(np.sum([np.square(np.asarray(p, dtype=float)) for p in parts], axis=0))
+    floor = np.isfinite(ws) & (ws < _DETRENDED_FLOOR)
+    if floor.any():
+        fallback = (np.broadcast_to(np.atleast_1d(_magnitude(ds['wind_speed'])).astype(float),
+                                    ws.shape)
+                    if 'wind_speed' in ds else np.full(ws.shape, np.nan))
+        logger.warning(
+            "lpfc_lut: the mean wind vector built from u, v, w is below %g m/s "
+            "for %d period(s) -- the block mean of detrended series, not a wind "
+            "speed; %s", _DETRENDED_FLOOR, int(floor.sum()),
+            "the dataset's 'wind_speed' is used for them." if 'wind_speed' in ds
+            else "no factor is looked up for them. Pass wind_speed=<variable>.")
+        ws = np.where(floor, fallback, ws)
+    return ws
 
 
 def lpfc_lut(ds, table=None, lpfc_filepath=None,
@@ -130,8 +160,11 @@ def lpfc_lut(ds, table=None, lpfc_filepath=None,
     lpfc_filepath : str, optional
         Path to a GEddySoft ``LUT_CF`` CSV.
     wind_speed : str, optional
-        Variable to look the factor up on. Omitted, the magnitude of the mean wind
-        vector is built from ``u``, ``v`` and ``w``, which is what GEddySoft passes.
+        Variable to look the factor up on. Omitted, the magnitude of the mean
+        wind vector, which is what GEddySoft passes -- from the components'
+        pre-detrending snapshots where the run detrended them, and the dataset's
+        ``wind_speed`` for a period where even that is ~0 (see
+        :func:`_mean_wind_speed`).
     stability : str
         Variable name for the stability parameter (``z_L``).
     unstable_below : float
@@ -182,8 +215,8 @@ def lpfc_lut(ds, table=None, lpfc_filepath=None,
             flat_cf[i] = factor(flat_ws[i], flat_stab[i], table)
     cf, unc = flat_cf.reshape(ws.shape), flat_unc.reshape(ws.shape)
 
-    shape = ds[wind_speed].shape if wind_speed is not None else ds['u'].shape
-    dims = ds[wind_speed].dims if wind_speed is not None else ds['u'].dims
+    source = wind_speed or ('u' if 'u' in ds else 'wind_speed')
+    shape, dims = ds[source].shape, ds[source].dims
     ds['scf_lpfc_lut'] = xr.DataArray(cf.reshape(shape), dims=dims)
     ds['scf_lpfc_lut'].attrs.update({
         'description': 'Low-pass filtering correction factor (GEddySoft LUT_CF)',

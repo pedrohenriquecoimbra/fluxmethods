@@ -51,6 +51,8 @@ import logging
 import numpy as np
 import xarray as xr
 
+from .analytic import CORRECTIONS, INSTRUMENTS, UNHANDED, handed
+
 logger = logging.getLogger(__name__)
 
 # ``nseconds`` and ``nfreq`` are hard-coded in EddyPro too -- they define an
@@ -284,7 +286,7 @@ def _inputs(ds, wind_speed, height, stability, air_temperature):
 def _usable_wind(value):
     """The period's wind speed, or ``None`` if the factor cannot be formed from it.
 
-    Deliberately *not* floored at :data:`~.main.MIN_WIND_SPEED`, unlike the built-in
+    Deliberately *not* floored at :data:`~.analytic.MIN_WIND_SPEED`, unlike the built-in
     methods. That floor bounds a factor that would otherwise run away as the wind
     drops, which is a reasonable thing for a method that stands on its own to do --
     but EddyPro applies no floor, and on the twelve sample periods below 0.3 m/s it
@@ -296,24 +298,37 @@ def _usable_wind(value):
     return u if np.isfinite(u) and u > 0.0 else None
 
 
-def _detrending_is_block_average(ds):
-    """EddyPro's high pass here is the block-averaging one; refuse to stand in for others."""
-    detrending = ((ds.attrs.get('Corrections', {}) or {}).get('detrending', {}) or {})
-    method = (detrending.get('method') if hasattr(detrending, 'get') else None) or 'ba'
-    if str(method) in ('ba', 'block_average'):
+def _detrending_is_block_average(ds, scope='all', corrections=UNHANDED):
+    """EddyPro's high pass here is the block-averaging one; refuse to stand in for others.
+
+    Asked of the variables the factor's flux is built from (``scope``: ``gas``,
+    ``heat`` or ``momentum``), across every detrending step -- the base block and
+    its numbered instances -- through the same rule as
+    :func:`~.analytic.block_average_highpass`
+    (:func:`~.analytic.detrending_not_block_average`). ``corrections`` is
+    ``[Corrections]`` as a plan hands it.
+    """
+    from .analytic import describe_detrending, detrending_not_block_average
+
+    offending = detrending_not_block_average(ds, scope, corrections)
+    if not offending:
         return True
     logger.warning(
         "the EddyPro replication methods implement its block-averaging high pass, "
-        "but detrending is %r; EddyPro uses a different transfer function for that "
+        "but %s; EddyPro uses a different transfer function for that "
         "(linear detrending, running mean), which is not transcribed here, so the "
-        "low-frequency term is omitted.", method)
+        "low-frequency term is omitted.", describe_detrending(offending))
     return False
 
 
-def _averaging_seconds(ds):
-    options = ds.attrs.get('Options', {}) or {}
-    minutes = (options.get('process_duration')
-               or (ds.attrs.get('Files', {}) or {}).get('fileduration') or 30)
+def _averaging_seconds(ds, given=None):
+    """The averaging period [s]; ``given`` is a method's keywords, where a plan
+    hands ``process_duration`` and ``fileduration``."""
+    from .analytic import _averaging_minutes
+
+    given = given or {}
+    minutes = _averaging_minutes(ds, handed(given, 'process_duration'),
+                                 handed(given, 'fileduration'))
     try:
         seconds = float(minutes) * 60.0
     except (TypeError, ValueError):
@@ -329,7 +344,7 @@ def _attach(ds, name, values, wind_speed, attrs):
 
 
 def _anemometric_factor(ds, wind_speed, height, stability, air_temperature,
-                        high_pass, momentum, caller):
+                        high_pass, momentum, caller, given=None):
     """The factor shared by ``w'Ts'`` and ``w'u'``, or ``None`` if it cannot be formed.
 
     ``BPCF_AnemometricFluxes`` computes both from one transfer function: every leg of
@@ -351,15 +366,18 @@ def _anemometric_factor(ds, wind_speed, height, stability, air_temperature,
     U, zmd, zL, _ = got
 
     acq = float(ds.attrs.get('acquisition_frequency', 20.0)) or 20.0
-    path_length, tau = _sonic_geometry(ds, acq, None)
+    given = given or {}
+    path_length, tau = _sonic_geometry(ds, acq, None, handed(given, INSTRUMENTS))
     if path_length is None or not tau:
         logger.warning("%s: no usable anemometer path length or time constant; "
                        "skipping.", caller)
         return None
 
     nf = _grid()
-    hp = (_hp(nf, _averaging_seconds(ds))
-          if (high_pass and _detrending_is_block_average(ds)) else 1.0)
+    scope = 'momentum' if momentum else 'heat'
+    hp = (_hp(nf, _averaging_seconds(ds, given))
+          if (high_pass and _detrending_is_block_average(
+              ds, scope, handed(given, CORRECTIONS))) else 1.0)
 
     cf = np.full(U.shape, np.nan, dtype=float)
     for i in range(U.size):
@@ -376,14 +394,19 @@ def _anemometric_factor(ds, wind_speed, height, stability, air_temperature,
 
 def bpcf_anemometric_fluxes(ds, wind_speed='wind_speed', height='z-d',
                             stability='z_L', air_temperature='air_temperature',
-                            high_pass=True, **kwargs):
+                            high_pass=None, highpass=None, **kwargs):
     """``BPCF_AnemometricFluxes``, scalar branch: the sensible-heat factor.
 
-    Attaches ``scf_eddypro_anemometric``.
+    ``high_pass`` (default on, EddyPro's ``lf_meth``) keeps the block-averaging
+    high pass in the integral; ``highpass``, the built-ins' spelling, is read as
+    the same switch. Attaches ``scf_eddypro_anemometric``.
     """
+    from .analytic import high_pass_switch
+    high_pass = high_pass_switch(high_pass, highpass, True, 'high_pass',
+                                 'highpass', 'bpcf_anemometric_fluxes')
     got = _anemometric_factor(ds, wind_speed, height, stability, air_temperature,
                               high_pass, momentum=False,
-                              caller='bpcf_anemometric_fluxes')
+                              caller='bpcf_anemometric_fluxes', given=kwargs)
     if got is None:
         return ds
     cf, path_length, tau = got
@@ -396,7 +419,8 @@ def bpcf_anemometric_fluxes(ds, wind_speed='wind_speed', height='z-d',
 
 
 def bpcf_momentum(ds, wind_speed='wind_speed', height='z-d', stability='z_L',
-                  air_temperature='air_temperature', high_pass=True, **kwargs):
+                  air_temperature='air_temperature', high_pass=None, highpass=None,
+                  **kwargs):
     """``BPCF_AnemometricFluxes``, Reynolds-stress branch: the momentum factor.
 
     Same transfer function as the heat flux -- both legs of ``w'u'`` are anemometer
@@ -410,10 +434,15 @@ def bpcf_momentum(ds, wind_speed='wind_speed', height='z-d', stability='z_L',
     off and 1.0071 with it on. Since ``u* = (<u'w'>^2 + <v'w'>^2)^(1/4)``, a factor
     ``F`` on the momentum covariance moves ``u*`` by ``F^(1/2)``.
 
-    Attaches ``scf_eddypro_momentum``.
+    ``high_pass`` / ``highpass`` as for :func:`bpcf_anemometric_fluxes`. Attaches
+    ``scf_eddypro_momentum``.
     """
+    from .analytic import high_pass_switch
+    high_pass = high_pass_switch(high_pass, highpass, True, 'high_pass',
+                                 'highpass', 'bpcf_momentum')
     got = _anemometric_factor(ds, wind_speed, height, stability, air_temperature,
-                              high_pass, momentum=True, caller='bpcf_momentum')
+                              high_pass, momentum=True, caller='bpcf_momentum',
+                              given=kwargs)
     if got is None:
         return ds
     cf, path_length, tau = got
@@ -427,7 +456,7 @@ def bpcf_momentum(ds, wind_speed='wind_speed', height='z-d', stability='z_L',
 
 def bpcf_moncrieff_97(ds, wind_speed='wind_speed', height='z-d', stability='z_L',
                       air_temperature='air_temperature', tube=None,
-                      high_pass=True, **kwargs):
+                      high_pass=None, highpass=None, **kwargs):
     """``BPCF_Moncrieff97``: the closed-path gas correction factor.
 
     One leg is the anemometer and the other the analyser::
@@ -436,9 +465,13 @@ def bpcf_moncrieff_97(ds, wind_speed='wind_speed', height='z-d', stability='z_L'
                   * dirga(g) wirga(g) t(g) sver(g) shor(g)
                   * HP(w) HP(g)
 
-    Attaches ``scf_eddypro_moncrieff_1997``.
+    ``high_pass`` / ``highpass`` as for :func:`bpcf_anemometric_fluxes`. A period
+    without a finite wind speed or air temperature gets ``NaN``, not 1. Attaches
+    ``scf_eddypro_moncrieff_1997``.
     """
-    from .analytic import _find_tube, _sonic_geometry
+    from .analytic import _find_tube, _sonic_geometry, high_pass_switch
+    high_pass = high_pass_switch(high_pass, highpass, True, 'high_pass',
+                                 'highpass', 'bpcf_moncrieff_97')
 
     got = _inputs(ds, wind_speed, height, stability, air_temperature)
     if got is None:
@@ -453,7 +486,7 @@ def bpcf_moncrieff_97(ds, wind_speed='wind_speed', height='z-d', stability='z_L'
             air_temperature)
         return ds
 
-    geom = tube if tube is not None else _find_tube(ds)
+    geom = tube if tube is not None else _find_tube(ds, handed(kwargs, INSTRUMENTS))
     if not geom:
         logger.warning(
             "bpcf_moncrieff_97 describes a closed-path analyser and found no tube "
@@ -468,19 +501,23 @@ def bpcf_moncrieff_97(ds, wind_speed='wind_speed', height='z-d', stability='z_L'
         return ds
 
     acq = float(ds.attrs.get('acquisition_frequency', 20.0)) or 20.0
-    sonic_path, sonic_tau = _sonic_geometry(ds, acq, None)
+    sonic_path, sonic_tau = _sonic_geometry(ds, acq, None, handed(kwargs, INSTRUMENTS))
     if sonic_path is None or not sonic_tau:
         logger.warning("bpcf_moncrieff_97: no usable anemometer geometry; skipping.")
         return ds
 
     nf = _grid()
-    hp = (_hp(nf, _averaging_seconds(ds))
-          if (high_pass and _detrending_is_block_average(ds)) else 1.0)
+    hp = (_hp(nf, _averaging_seconds(ds, kwargs))
+          if (high_pass and _detrending_is_block_average(
+              ds, 'gas', handed(kwargs, CORRECTIONS))) else 1.0)
 
     cf = np.full(U.shape, np.nan, dtype=float)
     for i in range(U.size):
         u_i = _usable_wind(U[i])
-        if u_i is None:
+        # Without the temperature the tube's Reynolds number is NaN, and
+        # ``_bounded`` would turn the whole transfer function into 1 -- a factor
+        # of exactly 1 presented as a computed one. Leave the period NaN.
+        if u_i is None or not np.isfinite(Ta[i]):
             continue
         zL_i = float(zL[i]) if zL.size > i else 0.0
         kf = nf * abs(zmd / u_i)

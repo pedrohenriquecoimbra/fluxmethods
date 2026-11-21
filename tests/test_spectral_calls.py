@@ -21,7 +21,10 @@ TUBE = {"li7200": {"tube_length": "71.1", "tube_diameter": "5.3",
 #: analytic corrections do: an optical path length and a response time on each
 #: sensor, and a model name.
 #:
-#: The values here are plausible ones, deliberately. `_sonic_geometry` accepts a
+#: The values here are plausible ones, deliberately, and in the units EddyPro's
+#: metadata declares them in: a path length in centimetres, a tube length in
+#: centimetres and its diameter in millimetres, a flow in litres per minute.
+#: `_sonic_geometry` accepts a
 #: declared path only while 0.01 < it < 0.5 m; outside that it falls back to the
 #: *bundled specification* for the declared model and says so, and it skips only
 #: when the model is unknown as well. So an implausible declaration does not
@@ -29,19 +32,23 @@ TUBE = {"li7200": {"tube_length": "71.1", "tube_diameter": "5.3",
 #: the geometry the fixture appears to set up, which is a fixture that looks like
 #: it is testing one thing and tests another.
 INSTRUMENTS = {
-    "sonic": {"model": "hs_50_1", "vpath_length": "0.125", "tau": "0.02"},
+    "sonic": {"model": "hs_50_1", "vpath_length": "12.5", "tau": "0.02"},
     "irga": {"model": "li7200_1", "tube_length": "71.1", "tube_diameter": "5.3",
              "tube_flowrate": "12.00", "northward_separation": "-3.00",
              "eastward_separation": "17.00", "vertical_separation": "1.00",
-             "vpath_length": "0.127", "tau": "0.02"},
+             "vpath_length": "12.7", "tau": "0.02"},
 }
 
 
-def _fully_declared(wind=(1.0, 3.0), zL=-0.5, ta=293.15):
-    """A dataset whose instruments are declared completely enough for EddyPro."""
+def _fully_declared(wind=(1.0, 3.0), zL=-0.5, ta=293.15, **analyser):
+    """A dataset whose instruments are declared completely enough for EddyPro.
+
+    ``analyser`` overrides keys of the gas analyser's block.
+    """
     ds = _averaged(wind, zL=zL)
     ds["air_temperature"] = ("date", np.full(np.atleast_1d(wind).shape, float(ta)))
-    ds.attrs["Instruments"] = INSTRUMENTS
+    ds.attrs["Instruments"] = {**INSTRUMENTS,
+                               "irga": {**INSTRUMENTS["irga"], **analyser}}
     return ds
 
 
@@ -72,7 +79,7 @@ class TestAnalyticCorrectionsRun(unittest.TestCase):
         np.testing.assert_allclose(scf, 1.0)
 
     def test_the_sonic_response_correction_runs_and_is_bounded(self):
-        out = analytic.sonic_response(_averaged())
+        out = analytic.sonic_response(_fully_declared())
         scf = next(v for k, v in out.data_vars.items() if k.startswith("scf_"))
         self.assertTrue(np.all(np.isfinite(scf.values)))
         self.assertTrue(np.all(scf.values >= 1.0))
@@ -83,10 +90,33 @@ class TestAnalyticCorrectionsRun(unittest.TestCase):
         self.assertTrue(np.all(np.isfinite(scf.values)))
         self.assertTrue(np.all(scf.values >= 1.0))
 
-    def test_faster_wind_costs_more_through_the_tube(self):
-        """More air past the intake in a period means more attenuation, so the
-        recovery factor rises with wind speed."""
-        scf = analytic.analytic_tube(_averaged([1.0, 3.0, 6.0]))["scf_analytic_tube"].values
+    def test_no_anemometer_declared_means_no_sonic_factor(self):
+        """A block that declares a tube is the analyser's, and nothing else in
+        ``_averaged`` can be the anemometer: the correction says so and adds no
+        factor, rather than taking the analyser's geometry for the sonic's."""
+        out = analytic.sonic_response(_averaged())
+        self.assertEqual([k for k in out.data_vars if k.startswith("scf_")], [])
+
+    def test_faster_wind_costs_more_through_a_long_tube(self):
+        """The tube's cut-off is fixed in natural frequency, and a faster wind
+        carries the flux at higher ones: where the tube is what attenuates, the
+        recovery factor rises with wind speed.
+
+        A long tube, because the factor is the whole analyser-and-anemometer
+        chain and the other legs run the other way -- path averaging and sensor
+        separation are transit times, which shorten as the wind rises. On the
+        71 cm tube of the fixture they outweigh it below a few metres per
+        second, and the factor is not monotonic at all."""
+        scf = analytic.analytic_tube(
+            _fully_declared([2.0, 3.0, 6.0, 10.0], tube_length="2000")
+        )["scf_analytic_tube"].values
+        self.assertTrue(np.all(np.diff(scf) > 0))
+
+    def test_a_longer_tube_costs_more(self):
+        scf = [float(analytic.analytic_tube(
+                   _fully_declared([3.0], tube_length=length)
+               )["scf_analytic_tube"].values[0])
+               for length in ("71.1", "300", "711", "2000")]
         self.assertTrue(np.all(np.diff(scf) > 0))
 
 
