@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import xarray as xr
 from .units import convert_unit, ureg, convert_to_prefered_units
-from .measure_type import molar_density_of
+from .measure_type import FLUX_CONVERSIONS, measure_type_of, molar_density_of
 from . import constants
 
 logger = logging.getLogger(__name__)
@@ -25,10 +25,56 @@ M_h2o = ureg('0.01802 kg/mol')     # kg/mol (water vapor)
 e_base = np.e       # base of natural log
 
 
-def add_micrometeorological_variables_to_data(data):
-    chi = data.h2o.pint.to("ppt")
-    if data.h2o.attrs.get('measure_type', None) == 'mixing_ratio':
+def _h2o_measure_type(data):
+    """How ``h2o`` was measured, through the registry every other stage reads.
+
+    :func:`~.measure_type.measure_type_of`, so a declaration is found wherever the
+    importer left it (flat or under ``Attr``) and an undeclared ratio is the dry
+    mixing ratio the flux conversion and the WPL step take it to be. An all-NaN
+    column is the importer's placeholder for a run without an IRGA: its mole
+    fraction is NaN whatever the type, so nothing is inferred or logged for it.
+    """
+    h2o = data['h2o']
+    if not np.isfinite(np.asarray(getattr(h2o.data, 'magnitude', h2o.values),
+                                  dtype=float)).any():
+        declared = (h2o.attrs.get('measure_type')
+                    or (h2o.attrs.get('Attr') or {}).get('measure_type'))
+        if declared in FLUX_CONVERSIONS:
+            return declared
+        units = getattr(h2o.pint, 'units', None)
+        density = units is not None and units.dimensionality == ureg('mol/m^3').dimensionality
+        return 'molar_density' if density else 'mole_fraction'
+    return measure_type_of(data, 'h2o')
+
+
+def h2o_mole_fraction(data, molar_volume, kind):
+    """The water-vapour mole fraction of moist air [ppt], from ``h2o`` as measured.
+
+    A wet ``mole_fraction`` is the answer already; a dry ``mixing_ratio`` r is
+    r / (1 + r); a ``molar_density`` is multiplied by the moist-air molar volume
+    ``molar_volume`` (R T / P), which is the only one of the three that depends on
+    a temperature.
+    """
+    if kind == 'molar_density':
+        return (data.h2o * molar_volume).pint.to('ppt')
+    chi = data.h2o.pint.to('ppt')
+    if kind == 'mixing_ratio':
         chi = chi / (1 + chi)
+    return chi
+
+
+def add_micrometeorological_variables_to_data(data, inputs=None):
+    # ``inputs`` are what a run's plan hands the step (``altitude``,
+    # ``gas_conversion_temperature``); without them both are read from the
+    # dataset's attributes, as a caller holding no plan has them.
+    #
+    # The molar volume first, at the sonic temperature: a water vapour measured as
+    # a molar density needs one to become a mole fraction, and the air
+    # temperature that replaces the sonic below is derived from that fraction.
+    data = data.assign(
+        air_molar_volume=(constants.R * data.ts / data.air_pressure),)
+    h2o_kind = _h2o_measure_type(data)
+    chi = h2o_mole_fraction(data, data.air_molar_volume, h2o_kind)
     data = data.assign(h2o_mole_fraction=chi,)
 
 
@@ -40,9 +86,6 @@ def add_micrometeorological_variables_to_data(data):
 
     # Ambient air molar volume[m+3 mol-1] and air mass density[kg m-3]
     # if (Stats % Pr > 0d0 . and . Stats % T /= error) then
-    data = data.assign(
-        air_molar_volume=(constants.R * data.ts / data.air_pressure),)
-    
     data = data.assign(
         Ma=molecular_weight_wet_air(chi),)
     data = data.assign(
@@ -86,11 +129,23 @@ def add_micrometeorological_variables_to_data(data):
     # stays at the air temperature: EddyPro's state on a run without a measured
     # air temperature, where it forms the molar volume from the sonic mean before
     # deriving the air temperature and never revisits it.
-    options = data.attrs.get('Options') or {}
-    sonic_conversion = str(options.get('gas_conversion_temperature') or '').strip().lower() == 'sonic'
+    if inputs is None:
+        conversion = (data.attrs.get('Options') or {}).get('gas_conversion_temperature')
+        altitude = _site_altitude(data.attrs)
+    else:
+        conversion, altitude = (inputs.get('gas_conversion_temperature'),
+                                inputs.get('altitude'))
+    sonic_conversion = str(conversion or '').strip().lower() == 'sonic'
     T_conv = data.ts if sonic_conversion else data.air_temperature
     data = data.assign(
         air_molar_volume=(constants.R * T_conv / data.air_pressure),)
+    # A measured density is what was measured: its mole fraction is re-formed at
+    # the molar volume now in force, so the water-vapour density below gives the
+    # measured density back. A ratio is what was measured otherwise, and stays.
+    if h2o_kind == 'molar_density':
+        chi = h2o_mole_fraction(data, data.air_molar_volume, h2o_kind)
+        data = data.assign(h2o_mole_fraction=chi,
+                           Ma=molecular_weight_wet_air(chi),)
     data = data.assign(
         rho_h2ov=rho_h2o(chi, data.air_pressure, data.air_molar_volume),)
     data = data.assign(
@@ -111,7 +166,7 @@ def add_micrometeorological_variables_to_data(data):
         dry_air_molar_volume=dry_air_molar_volume(data.Pd, T_conv),)
     data = data.assign(
         sealevel_moist_air_molar_volume=sealevel_moist_air_molar_volume(
-            data.air_temperature, data.e),)
+            data.air_temperature, data.e, altitude=altitude),)
     # Ambient-air thermodynamics are evaluated at the air temperature. Only a true
     # air temperature may be mapped to ``air_temperature``: the EddyPro adapter maps
     # its ``air_t`` column and never ``cell_t`` (an analyser probe runs several K
@@ -128,8 +183,10 @@ def add_micrometeorological_variables_to_data(data):
         cph2o=cp_h2o(data.RH, Ta_air),)
     data = data.assign(
         specific_humidity=specific_humidity(data.rho_h2ov, data.rho_m),)
+    # The sonic-to-air humidity correction, so it takes the sonic temperature;
+    # fed the air temperature it was applied twice and ran ~0.8 K cold.
     data = data.assign(
-        Ta_refined=refine_Ta_sonic(data.specific_humidity, Ta_air),)
+        Ta_refined=refine_Ta_sonic(data.specific_humidity, data.ts),)
     data = data.assign(
         air_heat_capacity=moist_air_cp(data.specific_humidity, data.dry_air_heat_capacity, data.cph2o),)
     data = data.assign(
@@ -222,11 +279,19 @@ def vapor_pressure_deficit(e, es):
 
 
 def dew_point_temperature(e):
-    # # Campbell & Norman: Tdew = (243.5 * ln(e/0.6108)) / (17.27 - ln(e/0.6108)) + 273.15
+    """Dew point [K] from the water-vapour partial pressure ``e``.
+
+    The Magnus form (Buck 1981, over water) gives it in degrees Celsius:
+    ``Td = 240.97 ln(e/0.611) / (17.502 - ln(e/0.611))`` with ``e`` in kPa. It is
+    attached as degC and published in kelvin like the run's other temperatures;
+    labelling the Celsius number kelvin put a 5 degC dew point at 5 K.
+    """
     Td = e.copy()
     e_kPa = convert_unit(e, 'kPa') / ureg('1 kPa')
-    Td.data = 240.97 * np.log(e_kPa / 0.611) / (17.502 - np.log(e_kPa / 0.611))
-    Td.data = Td * ureg('kelvin')
+    x = np.log(e_kPa / 0.611)
+    Tc = 240.97 * x / (17.502 - x)
+    Tc = np.asarray(getattr(Tc.data, 'magnitude', Tc.data), dtype=float)
+    Td.data = ureg.Quantity(Tc, 'degC').to('kelvin')
     return Td
 
 
@@ -244,9 +309,51 @@ def dry_air_molar_volume(Pd, Ta):
     return Vd
 
 
-def sealevel_moist_air_molar_volume(Ta, e):
-    Vsea = constants.R * Ta / (ureg("99767.5 pascal") - e)
+def sealevel_moist_air_molar_volume(Ta, e, altitude=None):
+    """Moist-air molar volume at the pressure the site's altitude gives.
+
+    That pressure is EddyPro's barometric rule on ``altitude``
+    (:func:`assumed_air_pressure`), the one a run that measures none is given;
+    without an altitude, its 125 m fallback. Not a constant taken at one site's
+    altitude, which is wrong at every other.
+    """
+    pressure = assumed_air_pressure(altitude)
+    Vsea = constants.R * Ta / (ureg.Quantity(pressure, "pascal") - e)
     return Vsea
+
+
+def assumed_air_pressure(altitude, fallback=99767.5):
+    """The air pressure [Pa] a site at ``altitude`` is given where none is measured.
+
+    EddyPro's rule: the barometric formula on the site's altitude,
+    ``101.3 kPa * exp(-z / 8200 m)`` (``read_metadata_file.f90``; Campbell &
+    Norman 1998, eq. 3.7). Without a readable altitude the ``fallback`` stands,
+    the same formula at 125 m.
+
+    The reference implementation keeps this rule with its importer, which is
+    where a run that measures no pressure is given one; a collection has no
+    importer, so the rule is here beside the one function that reads it.
+    """
+    metres = None
+    if altitude not in (None, ''):
+        try:
+            q = ureg.Quantity(str(altitude).strip())
+            metres = (float(q.magnitude) if q.dimensionless
+                      else float(q.to('m').magnitude))
+        except Exception:  # noqa: BLE001 - an unreadable altitude gets the fallback
+            metres = None
+    if metres is None or not np.isfinite(metres):
+        return fallback
+    return 101300.0 * float(np.exp(-metres / 8200.0))
+
+
+def _site_altitude(attrs):
+    """``altitude`` from a dataset's attributes, flat or under ``Global``."""
+    attrs = attrs or {}
+    altitude = attrs.get('altitude')
+    if altitude in (None, '') and hasattr(attrs.get('Global'), 'get'):
+        altitude = attrs['Global'].get('altitude')
+    return altitude
 
 def dry_air_mass_density(Pd, Ta):
     """Calculate dry air mass density (rho_d) using the ideal gas law.

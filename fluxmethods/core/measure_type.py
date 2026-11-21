@@ -92,6 +92,11 @@ def measure_type_of(data, name):
     a dry ``mixing_ratio`` -- the near universal convention for a reported gas
     concentration (EddyPro's ``CO2_DRY``) -- and the assumption is logged rather
     than made silently.
+
+    The units are the quantity's own where the array is quantified, and its
+    ``units`` attribute where it is not: the high-frequency chain runs on a
+    dequantified dataset, and a density read there as a ratio was converted (or
+    not) differently from the same variable at the period stage.
     """
     var = data[name]
     declared = (var.attrs.get('measure_type')
@@ -100,7 +105,14 @@ def measure_type_of(data, name):
         return declared
 
     units = getattr(getattr(var, 'pint', None), 'units', None)
-    if units is not None and ureg(str(units)).dimensionality == ureg('mol/m^3').dimensionality:
+    if units is None:
+        units = var.attrs.get('units') or None
+    try:
+        density = (units is not None and ureg(str(units)).dimensionality
+                   == ureg('mol/m^3').dimensionality)
+    except Exception:  # noqa: BLE001 - an unreadable unit says nothing either way
+        density = False
+    if density:
         inferred = 'molar_density'
     else:
         inferred = 'mixing_ratio'
